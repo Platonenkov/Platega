@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Platega.Demo.Admin/Platega.Demo.Admin.csproj" />
+    <Project Path="samples/Platega.Demo.Data/Platega.Demo.Data.csproj" />
+    <Project Path="samples/Platega.Demo.Shop/Platega.Demo.Shop.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Platega.Client.AspNetCore/Platega.Client.AspNetCore.csproj" />
+    <Project Path="src/Platega.Client/Platega.Client.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Platega.Client.Tests/Platega.Client.Tests.csproj" />
+  </Folder>
+</Solution>
