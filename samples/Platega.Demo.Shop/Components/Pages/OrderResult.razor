@@ -1,0 +1,137 @@
+@page "/orders/{OrderId:guid}/result"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject OrderService Orders
+@inject PaymentSyncService PaymentSync
+@inject ILogger<OrderResult> Logger
+
+<PageTitle>Статус заказа — Platega Shop</PageTitle>
+
+<h1>Статус заказа</h1>
+
+@if (_order is null)
+{
+    <div class="alert alert-warning">Заказ не найден.</div>
+    return;
+}
+
+@{
+    (string text, string css) = DemoFormat.Status(_order.Status);
+}
+
+<div class="card mb-3" style="max-width: 640px">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h5 class="card-title mb-1">@_order.ProductName</h5>
+                <div class="text-muted small">Заказ @_order.Id</div>
+            </div>
+            <span class="badge fs-6 @css">@text</span>
+        </div>
+        <p class="fs-4 fw-semibold my-3">@DemoFormat.Money(_order.Amount, _order.Currency)</p>
+
+        @switch (_order.Status)
+        {
+            case PaymentStatus.Pending:
+                <p>
+                    Ждём подтверждения от Platega@(_polling ? ", страница обновляется автоматически" : string.Empty).
+                    @if (Failed)
+                    {
+                        <span>Платёжная страница вернула вас по ссылке неуспешной оплаты.</span>
+                    }
+                </p>
+                @if (!string.IsNullOrEmpty(_order.PaymentUrl))
+                {
+                    <a class="btn btn-outline-primary" href="@_order.PaymentUrl">Вернуться к оплате</a>
+                }
+                break;
+            case PaymentStatus.Confirmed:
+                <p class="text-success mb-0">Оплата получена @DemoFormat.Date(_order.PaidAt). Спасибо за покупку!</p>
+                break;
+            case PaymentStatus.Canceled:
+                <p class="mb-0">Платёж не прошёл или ссылка истекла. <a href="checkout/@_order.ProductCode">Попробовать снова</a></p>
+                break;
+            case PaymentStatus.Chargebacked:
+                <p class="mb-0">Средства возвращены @DemoFormat.Date(_order.RefundedAt).</p>
+                break;
+            default:
+                <p class="text-danger mb-0">@(_order.LastError ?? "Не удалось определить статус платежа.")</p>
+                break;
+        }
+
+        @if (_order.PaidWith is not null)
+        {
+            <p class="small text-muted mt-3 mb-0">Метод по данным Platega: @_order.PaidWith</p>
+        }
+    </div>
+</div>
+
+<a href="orders">Все заказы</a>
+
+@code {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan PollDuration = TimeSpan.FromMinutes(20);
+
+    private readonly CancellationTokenSource _disposed = new CancellationTokenSource();
+    private Order? _order;
+    private bool _polling;
+
+    [Parameter]
+    public Guid OrderId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "failed")]
+    public int? FailedFlag { get; set; }
+
+    private bool Failed => FailedFlag == 1;
+
+    protected override async Task OnInitializedAsync() =>
+        _order = await Orders.FindAsync(OrderId, _disposed.Token);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _order is null)
+        {
+            return;
+        }
+
+        _polling = true;
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + PollDuration;
+        using PeriodicTimer timer = new PeriodicTimer(PollInterval);
+        try
+        {
+            do
+            {
+                await RefreshAsync();
+            }
+            while (_order?.Status == PaymentStatus.Pending
+                && DateTimeOffset.UtcNow < deadline
+                && await timer.WaitForNextTickAsync(_disposed.Token));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        _polling = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            _order = await PaymentSync.SyncOrderAsync(OrderId, _disposed.Token) ?? _order;
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException)
+        {
+            Logger.LogWarning("Status refresh failed: {Error}", exception.Message);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _disposed.CancelAsync();
+        _disposed.Dispose();
+    }
+}

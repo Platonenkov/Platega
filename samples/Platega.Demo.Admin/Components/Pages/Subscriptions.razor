@@ -1,0 +1,152 @@
+@page "/subscriptions"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Platega.Subscriptions
+@inject IPlategaSubscriptionsClient SubscriptionsClient
+@inject SubscriptionService SubscriptionService
+
+<PageTitle>Подписки — Platega Admin</PageTitle>
+
+<h1>Подписки</h1>
+<p class="text-muted small">Данные берутся напрямую из <code>GET /subscription</code>.</p>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div>
+        <label class="form-label small mb-1" for="status">Статус</label>
+        <select id="status" class="form-select form-select-sm" @bind="_statusFilter">
+            <option value="">Все</option>
+            @foreach (SubscriptionStatus status in Enum.GetValues<SubscriptionStatus>().Where(value => value != SubscriptionStatus.Unknown))
+            {
+                <option value="@status">@DemoFormat.Status(status).Text</option>
+            }
+        </select>
+    </div>
+    <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="() => LoadAsync(1)">Показать</button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_selected is not null)
+{
+    <div class="card mb-3">
+        <div class="card-body small">
+            <div class="d-flex justify-content-between">
+                <h2 class="fs-6">Подписка @_selected.Id</h2>
+                <button type="button" class="btn-close" @onclick="() => _selected = null"></button>
+            </div>
+            <dl class="row mb-2">
+                <dt class="col-sm-3">Статус</dt><dd class="col-sm-9">@DemoFormat.Status(_selected.Status).Text</dd>
+                <dt class="col-sm-3">Сумма</dt><dd class="col-sm-9">@DemoFormat.Money(_selected.Amount, _selected.CurrencyCode ?? "RUB") @DemoFormat.Interval(_selected.IntervalUnit, _selected.IntervalCount)</dd>
+                <dt class="col-sm-3">Email плательщика</dt><dd class="col-sm-9">@(_selected.CustomerEmail ?? "—")</dd>
+                <dt class="col-sm-3">Старт</dt><dd class="col-sm-9">@DemoFormat.Date(_selected.StartAt)</dd>
+                <dt class="col-sm-3">Последнее / следующее</dt><dd class="col-sm-9">@DemoFormat.Date(_selected.LastChargeAt) / @DemoFormat.Date(_selected.NextChargeAt)</dd>
+                @if (_selected.ChargeMetrics is { } metrics)
+                {
+                    <dt class="col-sm-3">Списания</dt>
+                    <dd class="col-sm-9">всего @metrics.ChargesTotal, успешных @metrics.ChargesSuccess, неуспешных @metrics.ChargesFailed, на сумму @DemoFormat.Money(metrics.TotalAmount, _selected.CurrencyCode ?? "RUB")</dd>
+                }
+            </dl>
+            @if (_selected.Status is SubscriptionStatus.Active or SubscriptionStatus.PastDue or SubscriptionStatus.PendingAgreement)
+            {
+                @if (_confirmCancel)
+                {
+                    <span class="me-2">Остановить будущие списания?</span>
+                    <button class="btn btn-danger btn-sm" disabled="@_busy" @onclick="CancelAsync">Да, отменить</button>
+                    <button class="btn btn-link btn-sm" @onclick="() => _confirmCancel = false">Нет</button>
+                }
+                else
+                {
+                    <button class="btn btn-outline-danger btn-sm" @onclick="() => _confirmCancel = true">Отменить подписку</button>
+                }
+            }
+        </div>
+    </div>
+}
+
+@if (_page is { Items.Count: > 0 })
+{
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Создана</th><th>Описание</th><th>Сумма</th><th>Статус</th><th>Email</th><th>Списаний</th><th>Следующее</th><th></th></tr></thead>
+        <tbody>
+            @foreach (PlategaSubscription subscription in _page.Items)
+            {
+                (string text, string css) = DemoFormat.Status(subscription.Status);
+                <tr>
+                    <td>@DemoFormat.Date(subscription.CreatedAt)</td>
+                    <td>@subscription.Description</td>
+                    <td>@DemoFormat.Money(subscription.Amount, subscription.CurrencyCode ?? "RUB") @DemoFormat.Interval(subscription.IntervalUnit, subscription.IntervalCount)</td>
+                    <td><span class="badge @css">@text</span></td>
+                    <td>@(subscription.CustomerEmail ?? "—")</td>
+                    <td>@subscription.ChargesCount</td>
+                    <td>@DemoFormat.Date(subscription.NextChargeAt)</td>
+                    <td><button class="btn btn-outline-secondary btn-sm" disabled="@_busy" @onclick="() => SelectAsync(subscription.Id)">Открыть</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <nav class="d-flex align-items-center gap-2">
+        <button class="btn btn-outline-secondary btn-sm" disabled="@(_page.Page <= 1 || _busy)" @onclick="() => LoadAsync(_page.Page - 1)">Назад</button>
+        <span class="small">Страница @_page.Page из @Math.Max(1, (int)Math.Ceiling(_page.Total / (double)PageSize)), всего @_page.Total</span>
+        <button class="btn btn-outline-secondary btn-sm" disabled="@(_page.Page * PageSize >= _page.Total || _busy)" @onclick="() => LoadAsync(_page.Page + 1)">Вперёд</button>
+    </nav>
+}
+else if (_page is not null)
+{
+    <p>Подписок не найдено.</p>
+}
+
+@code {
+    private const int PageSize = 20;
+
+    private SubscriptionPage? _page;
+    private PlategaSubscription? _selected;
+    private string _statusFilter = string.Empty;
+    private string? _error;
+    private bool _busy;
+    private bool _confirmCancel;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private Task LoadAsync(int page) => RunAsync(async () =>
+    {
+        SubscriptionStatus? status = Enum.TryParse(_statusFilter, out SubscriptionStatus parsed) ? parsed : null;
+        _page = await SubscriptionsClient.ListAsync(new SubscriptionListFilter { Page = page, Size = PageSize, Status = status });
+    });
+
+    private Task SelectAsync(Guid id) => RunAsync(async () =>
+    {
+        _confirmCancel = false;
+        _selected = await SubscriptionsClient.GetAsync(id);
+    });
+
+    private Task CancelAsync() => RunAsync(async () =>
+    {
+        Guid id = _selected!.Id;
+        await SubscriptionService.CancelAsync(id, CancellationToken.None);
+        _confirmCancel = false;
+        _selected = await SubscriptionsClient.GetAsync(id);
+        _page = await SubscriptionsClient.ListAsync(new SubscriptionListFilter { Page = _page?.Page ?? 1, Size = PageSize });
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

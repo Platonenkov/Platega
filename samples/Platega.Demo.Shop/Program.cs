@@ -1,23 +1,30 @@
+using Microsoft.AspNetCore.HttpOverrides;
+using Platega.Demo.Data;
 using Platega.Demo.Shop.Components;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddPlategaDemo(builder.Configuration);
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
-// Configure the HTTP request pipeline.
+await app.Services.InitializeDemoDatabaseAsync();
+
+app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 
+app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseAntiforgery();
 
 app.MapStaticAssets();

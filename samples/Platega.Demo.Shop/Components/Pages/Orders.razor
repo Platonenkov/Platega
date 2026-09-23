@@ -1,0 +1,50 @@
+@page "/orders"
+@rendermode InteractiveServer
+@inject OrderService OrderService
+
+<PageTitle>Мои заказы — Platega Shop</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Мои заказы</h1>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Обновить</button>
+</div>
+<p class="text-muted small">В демо нет учётных записей, поэтому здесь показаны все заказы магазина.</p>
+
+@if (_orders is null)
+{
+    <p>Загрузка…</p>
+}
+else if (_orders.Count == 0)
+{
+    <p>Заказов пока нет. <a href="">Перейти в каталог</a></p>
+}
+else
+{
+    <table class="table align-middle">
+        <thead>
+            <tr><th>Дата</th><th>Товар</th><th>Покупатель</th><th class="text-end">Сумма</th><th>Статус</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (Order order in _orders)
+            {
+                (string text, string css) = DemoFormat.Status(order.Status);
+                <tr>
+                    <td>@DemoFormat.Date(order.CreatedAt)</td>
+                    <td>@order.ProductName</td>
+                    <td>@order.CustomerName</td>
+                    <td class="text-end">@DemoFormat.Money(order.Amount, order.Currency)</td>
+                    <td><span class="badge @css">@text</span></td>
+                    <td><a href="orders/@order.Id/result">Подробнее</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<Order>? _orders;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _orders = await OrderService.ListAsync(100, CancellationToken.None);
+}

@@ -1,0 +1,110 @@
+@page "/checkout/{ProductCode}"
+@rendermode InteractiveServer
+@inject OrderService Orders
+@inject NavigationManager Navigation
+
+<PageTitle>Оформление заказа — Platega Shop</PageTitle>
+
+@if (_product is null)
+{
+    <div class="alert alert-warning">Товар не найден. <a href="">Вернуться в каталог</a></div>
+    return;
+}
+
+<h1>Оформление заказа</h1>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <EditForm Model="_form" OnValidSubmit="PayAsync" FormName="checkout">
+            <div class="mb-3">
+                <label class="form-label" for="customer">Имя покупателя</label>
+                <InputText id="customer" class="form-control" @bind-Value="_form.CustomerName" placeholder="Иван Иванов" />
+                <div class="form-text">Передаётся в Platega как <code>metadata.userId</code> для антифрода.</div>
+            </div>
+
+            <fieldset class="mb-3">
+                <legend class="fs-6 fw-semibold">Способ оплаты</legend>
+                <InputRadioGroup @bind-Value="_form.MethodKey">
+                    @foreach (PaymentMethodOption option in DemoCatalog.PaymentMethods)
+                    {
+                        string key = KeyOf(option.Method);
+                        <div class="form-check">
+                            <InputRadio class="form-check-input" id="@($"method-{key}")" Value="key" />
+                            <label class="form-check-label" for="@($"method-{key}")">
+                                @option.Title <span class="text-muted small">— @option.Hint</span>
+                            </label>
+                        </div>
+                    }
+                </InputRadioGroup>
+            </fieldset>
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger" role="alert">@_error</div>
+            }
+
+            <button type="submit" class="btn btn-primary btn-lg" disabled="@_busy">
+                @(_busy ? "Создаём платёж…" : $"Оплатить {DemoFormat.Money(_product.Price, _product.Currency)}")
+            </button>
+        </EditForm>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">@_product.Name</h5>
+                <p class="text-muted">@_product.Description</p>
+                <p class="fs-4 fw-semibold mb-0">@DemoFormat.Money(_product.Price, _product.Currency)</p>
+            </div>
+        </div>
+        <p class="small text-muted mt-3">
+            После нажатия «Оплатить» магазин создаёт транзакцию через API Platega и перенаправляет вас на платёжную
+            страницу. Ссылка действует 15 минут.
+        </p>
+    </div>
+</div>
+
+@code {
+    private const string AnyMethodKey = "any";
+
+    private readonly CheckoutForm _form = new CheckoutForm();
+    private Product? _product;
+    private string? _error;
+    private bool _busy;
+
+    [Parameter]
+    public string ProductCode { get; set; } = string.Empty;
+
+    protected override void OnParametersSet() => _product = DemoCatalog.FindProduct(ProductCode);
+
+    private static string KeyOf(PaymentMethod? method) => method is { } value ? ((int)value).ToString(System.Globalization.CultureInfo.InvariantCulture) : AnyMethodKey;
+
+    private async Task PayAsync()
+    {
+        if (_product is null || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            PaymentMethod? method = _form.MethodKey == AnyMethodKey ? null : (PaymentMethod)int.Parse(_form.MethodKey, System.Globalization.CultureInfo.InvariantCulture);
+            Order order = await Orders.CreateAsync(_product.Code, method, _form.CustomerName, CancellationToken.None);
+            Navigation.NavigateTo(order.PaymentUrl!, forceLoad: true);
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
+        {
+            _error = $"Не удалось создать платёж: {exception.Message}";
+            _busy = false;
+        }
+    }
+
+    private sealed class CheckoutForm
+    {
+        public string CustomerName { get; set; } = string.Empty;
+
+        public string MethodKey { get; set; } = AnyMethodKey;
+    }
+}

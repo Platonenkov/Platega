@@ -1,7 +1,106 @@
-﻿@page "/"
+@page "/"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Platega.Balances
+@inject IPlategaBalancesClient BalancesClient
+@inject OrderService OrderService
+@inject Microsoft.Extensions.Options.IOptions<PlategaOptions> PlategaOptions
+@inject NavigationManager Navigation
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Обзор — Platega Admin</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Обзор</h1>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Обновить</button>
+</div>
 
-Welcome to your new app.
+<div class="row g-3 mb-4">
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="fs-5">Балансы</h2>
+                @if (_balanceError is not null)
+                {
+                    <div class="alert alert-danger small mb-0">@_balanceError</div>
+                }
+                else if (_balances is null)
+                {
+                    <p>Загрузка…</p>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Валюта</th><th class="text-end">Доступно</th><th class="text-end">Заморожено</th></tr></thead>
+                        <tbody>
+                            @foreach (PlategaBalance balance in _balances)
+                            {
+                                <tr>
+                                    <td>@balance.Currency</td>
+                                    <td class="text-end">@DemoFormat.Money(balance.Amount, balance.Currency)</td>
+                                    <td class="text-end">@DemoFormat.Money(balance.FrozenBalance, balance.Currency)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="fs-5">Заказы магазина</h2>
+                <div class="d-flex flex-wrap gap-3">
+                    @foreach (PaymentStatus status in new[] { PaymentStatus.Pending, PaymentStatus.Confirmed, PaymentStatus.Canceled, PaymentStatus.Chargebacked, PaymentStatus.Unknown })
+                    {
+                        (string text, string css) = DemoFormat.Status(status);
+                        <div class="border rounded p-2 text-center" style="min-width: 110px">
+                            <div class="fs-4 fw-semibold">@_counts.GetValueOrDefault(status)</div>
+                            <span class="badge @css">@text</span>
+                        </div>
+                    }
+                </div>
+                <p class="mt-3 mb-0">Получено (подтверждённые): <b>@DemoFormat.Money(_confirmedTotal, "RUB")</b></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body small">
+        <h2 class="fs-6">Подключение</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-3">API</dt><dd class="col-sm-9">@PlategaOptions.Value.BaseAddress</dd>
+            <dt class="col-sm-3">MerchantId</dt><dd class="col-sm-9">@PlategaOptions.Value.MerchantId</dd>
+            <dt class="col-sm-3">Callback URL для ЛК</dt><dd class="col-sm-9"><code>@(Navigation.BaseUri)platega/callback</code> (в ЛК нужен публичный HTTPS-адрес)</dd>
+            <dt class="col-sm-3">Payout API</dt><dd class="col-sm-9">@(PlategaOptions.Value.PayoutsEnabled ? "настроен" : "не настроен (нет PayoutSecret)")</dd>
+        </dl>
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<PlategaBalance>? _balances;
+    private string? _balanceError;
+    private Dictionary<PaymentStatus, int> _counts = [];
+    private decimal _confirmedTotal;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        IReadOnlyList<Order> orders = await OrderService.ListAsync(1000, CancellationToken.None);
+        _counts = orders.GroupBy(order => order.Status).ToDictionary(group => group.Key, group => group.Count());
+        _confirmedTotal = orders.Where(order => order.Status == PaymentStatus.Confirmed).Sum(order => order.Amount);
+
+        try
+        {
+            _balanceError = null;
+            _balances = await BalancesClient.GetBalancesAsync();
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
+        {
+            _balanceError = exception.Message;
+        }
+    }
+}

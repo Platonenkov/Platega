@@ -1,4 +1,5 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject Microsoft.Extensions.Options.IOptions<Platega.PlategaOptions> PlategaOptions
 
 <div class="page">
     <div class="sidebar">
@@ -6,8 +7,14 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+        <div class="top-row px-4 gap-3">
+            <span class="text-muted small">Платёжный шлюз: @PlategaOptions.Value.BaseAddress</span>
+            <AuthorizeView>
+                <form method="post" action="account/logout" class="m-0">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-link btn-sm p-0">Выйти</button>
+                </form>
+            </AuthorizeView>
         </div>
 
         <article class="content px-4">
@@ -17,7 +24,7 @@
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    Произошла ошибка.
+    <a href="." class="reload">Перезагрузить</a>
     <span class="dismiss">🗙</span>
 </div>

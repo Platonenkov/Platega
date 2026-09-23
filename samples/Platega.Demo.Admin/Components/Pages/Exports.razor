@@ -1,0 +1,112 @@
+@page "/exports"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Platega.Payments
+@inject IPlategaPaymentsClient PaymentsClient
+
+<PageTitle>Выгрузки — Platega Admin</PageTitle>
+
+<h1>Выгрузка транзакций</h1>
+<p class="text-muted small">Platega формирует файл и возвращает ссылку на него.</p>
+
+<div class="card" style="max-width: 720px">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-sm-6">
+                <label class="form-label" for="from">С</label>
+                <input id="from" type="datetime-local" class="form-control" @bind="_from" />
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="to">По</label>
+                <input id="to" type="datetime-local" class="form-control" @bind="_to" />
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="format">Формат</label>
+                <select id="format" class="form-select" @bind="_format">
+                    <option value="@TransactionExportFormat.Csv">CSV</option>
+                    <option value="@TransactionExportFormat.Excel">Excel</option>
+                    <option value="@TransactionExportFormat.Json">JSON</option>
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="statuses">Коды статусов</label>
+                <input id="statuses" class="form-control" @bind="_statusCodes" placeholder="например 6,7; пусто — все" />
+                <div class="form-text">Соответствие кодов статусам в документации не описано.</div>
+            </div>
+            <div class="col-12">
+                <span class="form-label d-block">Методы оплаты (пусто — все)</span>
+                @foreach (PaymentMethodOption option in DemoCatalog.PaymentMethods.Where(option => option.Method is not null))
+                {
+                    PaymentMethod method = option.Method!.Value;
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="m-@((int)method)" checked="@_methods.Contains(method)" @onchange="e => Toggle(method, (bool)e.Value!)" />
+                        <label class="form-check-label" for="m-@((int)method)">@option.Title</label>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <button class="btn btn-primary mt-3" disabled="@_busy" @onclick="ExportAsync">@(_busy ? "Формируем…" : "Сформировать")</button>
+
+        @if (_error is not null)
+        {
+            <div class="alert alert-danger mt-3 mb-0">@_error</div>
+        }
+
+        @if (_file is not null)
+        {
+            <div class="alert alert-success mt-3 mb-0">Файл готов: <a href="@_file" target="_blank" rel="noopener">@_file</a></div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly HashSet<PaymentMethod> _methods = [];
+    private DateTime _from = DateTime.Today.AddDays(-30);
+    private DateTime _to = DateTime.Now.AddMinutes(1);
+    private TransactionExportFormat _format = TransactionExportFormat.Csv;
+    private string _statusCodes = string.Empty;
+    private Uri? _file;
+    private string? _error;
+    private bool _busy;
+
+    private void Toggle(PaymentMethod method, bool selected)
+    {
+        if (selected)
+        {
+            _methods.Add(method);
+        }
+        else
+        {
+            _methods.Remove(method);
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        _busy = true;
+        _error = null;
+        _file = null;
+        try
+        {
+            _file = await PaymentsClient.ExportTransactionsAsync(
+                new TransactionExportRequest
+                {
+                    From = new DateTimeOffset(_from, TimeZoneInfo.Local.GetUtcOffset(_from)),
+                    To = new DateTimeOffset(_to, TimeZoneInfo.Local.GetUtcOffset(_to)),
+                    StatusCodes = _statusCodes.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                    PaymentMethods = _methods.ToArray(),
+                    TimeZoneId = TimeZoneInfo.Local.Id,
+                },
+                _format);
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException or ArgumentException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

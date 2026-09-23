@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>platega-demo-shop</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Platega.Demo.Data\Platega.Demo.Data.csproj" />
+  </ItemGroup>
 
 </Project>

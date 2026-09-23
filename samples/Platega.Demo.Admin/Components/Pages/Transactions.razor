@@ -1,0 +1,182 @@
+@page "/transactions"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Platega.Payments
+@using Platega.Refunds
+@inject OrderService OrderService
+@inject PaymentSyncService PaymentSync
+@inject RefundService RefundService
+@inject IPlategaPaymentsClient PaymentsClient
+
+<PageTitle>Транзакции — Platega Admin</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Транзакции</h1>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Обновить</button>
+</div>
+
+@if (_message is not null)
+{
+    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success") alert-dismissible">
+        @_message
+        <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+    </div>
+}
+
+@if (_refundOrder is not null)
+{
+    <div class="card border-warning mb-3">
+        <div class="card-body">
+            <h2 class="fs-5">Возврат: @_refundOrder.ProductName, @DemoFormat.Money(_refundOrder.Amount, _refundOrder.Currency)</h2>
+            @if (_availability is null)
+            {
+                <p>Проверяем возможность отмены…</p>
+            }
+            else if (_availability.Supported)
+            {
+                <p class="mb-2">Отмена доступна. С баланса будет списано <b>@_availability.TotalDeductUsdt USDT</b>@(_availability.PenaltyUsdt is { } penalty ? $", включая штраф {penalty} USDT" : string.Empty).</p>
+                <button class="btn btn-danger" disabled="@_busy" @onclick="RefundAsync">Подтвердить возврат</button>
+                <button class="btn btn-link" @onclick="CloseRefund">Отмена</button>
+            }
+            else
+            {
+                <p class="mb-2 text-danger">Отмена недоступна: @(_availability.BlockReason ?? "причина не указана")</p>
+                <button class="btn btn-secondary" @onclick="CloseRefund">Закрыть</button>
+            }
+        </div>
+    </div>
+}
+
+@if (_details is not null)
+{
+    <div class="card mb-3">
+        <div class="card-body small">
+            <div class="d-flex justify-content-between">
+                <h2 class="fs-6">Транзакция @_details.Id по данным Platega</h2>
+                <button type="button" class="btn-close" @onclick="() => _details = null"></button>
+            </div>
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Статус</dt><dd class="col-sm-9">@_details.Status</dd>
+                <dt class="col-sm-3">Сумма</dt><dd class="col-sm-9">@_details.Amount</dd>
+                <dt class="col-sm-3">Метод</dt><dd class="col-sm-9">@_details.PaymentMethod</dd>
+                <dt class="col-sm-3">Комиссия</dt><dd class="col-sm-9">@_details.Commission (@_details.CommissionUsdt USDT)</dd>
+                <dt class="col-sm-3">В USDT</dt><dd class="col-sm-9">@_details.AmountUsdt</dd>
+                <dt class="col-sm-3">Payload</dt><dd class="col-sm-9">@_details.Payload</dd>
+                <dt class="col-sm-3">Описание</dt><dd class="col-sm-9">@_details.Description</dd>
+            </dl>
+        </div>
+    </div>
+}
+
+@if (_orders is null)
+{
+    <p>Загрузка…</p>
+}
+else if (_orders.Count == 0)
+{
+    <p>Транзакций пока нет — оформите заказ в магазине.</p>
+}
+else
+{
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr><th>Создан</th><th>Товар</th><th>Покупатель</th><th class="text-end">Сумма</th><th>Метод</th><th>Статус</th><th>Transaction ID</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (Order order in _orders)
+            {
+                (string text, string css) = DemoFormat.Status(order.Status);
+                <tr>
+                    <td>@DemoFormat.Date(order.CreatedAt)</td>
+                    <td>@order.ProductName</td>
+                    <td>@order.CustomerName</td>
+                    <td class="text-end">@DemoFormat.Money(order.Amount, order.Currency)</td>
+                    <td>@(order.PaidWith ?? DemoFormat.MethodTitle(order.Method))</td>
+                    <td><span class="badge @css" title="@order.LastError">@text</span></td>
+                    <td class="small text-muted">@order.TransactionId</td>
+                    <td class="text-nowrap">
+                        @if (order.TransactionId is not null)
+                        {
+                            <button class="btn btn-outline-primary btn-sm" disabled="@_busy" @onclick="() => SyncAsync(order)">Проверить</button>
+                            <button class="btn btn-outline-secondary btn-sm" disabled="@_busy" @onclick="() => ShowDetailsAsync(order)">Детали</button>
+                        }
+                        @if (order.Status == PaymentStatus.Confirmed)
+                        {
+                            <button class="btn btn-outline-danger btn-sm" disabled="@_busy" @onclick="() => StartRefundAsync(order)">Возврат</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<Order>? _orders;
+    private Order? _refundOrder;
+    private CancelAvailability? _availability;
+    private PlategaTransaction? _details;
+    private string? _message;
+    private bool _messageIsError;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _orders = await OrderService.ListAsync(200, CancellationToken.None);
+
+    private Task SyncAsync(Order order) => RunAsync(async () =>
+    {
+        Order? updated = await PaymentSync.SyncOrderAsync(order.Id, CancellationToken.None);
+        Show($"Статус обновлён: {DemoFormat.Status(updated?.Status ?? PaymentStatus.Unknown).Text}", isError: false);
+    });
+
+    private Task ShowDetailsAsync(Order order) => RunAsync(async () =>
+        _details = await PaymentsClient.GetTransactionAsync(order.TransactionId!.Value));
+
+    private async Task StartRefundAsync(Order order)
+    {
+        _refundOrder = order;
+        _availability = null;
+        await RunAsync(async () => _availability = await RefundService.CheckAsync(order.Id, CancellationToken.None));
+    }
+
+    private Task RefundAsync() => RunAsync(async () =>
+    {
+        CancelResult result = await RefundService.RefundAsync(_refundOrder!.Id, CancellationToken.None);
+        string outcome = result.Accepted
+            ? "Возврат принят"
+            : result.ManualControlRequired ? "Возврат требует ручной обработки поддержкой Platega" : "Возврат не принят";
+        Show($"{outcome}: {result.Message}", isError: !result.Accepted);
+        CloseRefund();
+    });
+
+    private void CloseRefund()
+    {
+        _refundOrder = null;
+        _availability = null;
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            Show(exception.Message, isError: true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Show(string message, bool isError)
+    {
+        _message = message;
+        _messageIsError = isError;
+    }
+}

@@ -1,0 +1,92 @@
+@page "/subscriptions"
+@rendermode InteractiveServer
+@inject SubscriptionService SubscriptionService
+@inject NavigationManager Navigation
+
+<PageTitle>Подписки — Platega Shop</PageTitle>
+
+<h1>Подписки</h1>
+<p class="text-muted">Регулярное автосписание через СБП. После оформления Platega попросит подтвердить привязку счёта в банке.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
+    @foreach (SubscriptionPlan plan in DemoCatalog.Plans)
+    {
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">@plan.Name</h5>
+                    <p class="text-muted flex-grow-1">@plan.Description</p>
+                    <p class="fs-4 fw-semibold">@DemoFormat.Money(plan.Amount, "RUB") <span class="fs-6 fw-normal text-muted">@DemoFormat.Interval(plan.Interval, plan.IntervalCount)</span></p>
+                    <button class="btn btn-primary" disabled="@_busy" @onclick="() => SubscribeAsync(plan.Code)">Оформить</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="d-flex justify-content-between align-items-center">
+    <h2 class="fs-5 mb-0">Оформленные подписки</h2>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Обновить</button>
+</div>
+
+@if (_subscriptions is { Count: > 0 })
+{
+    <table class="table align-middle mt-2">
+        <thead><tr><th>Создана</th><th>Тариф</th><th>Сумма</th><th>Статус</th><th>Следующее списание</th><th>Списаний</th><th></th></tr></thead>
+        <tbody>
+            @foreach (SubscriptionRecord subscription in _subscriptions)
+            {
+                (string text, string css) = DemoFormat.Status(subscription.Status);
+                <tr>
+                    <td>@DemoFormat.Date(subscription.CreatedAt)</td>
+                    <td>@subscription.PlanName</td>
+                    <td>@DemoFormat.Money(subscription.Amount, "RUB") @DemoFormat.Interval(subscription.Interval, subscription.IntervalCount)</td>
+                    <td><span class="badge @css">@text</span></td>
+                    <td>@DemoFormat.Date(subscription.NextChargeAt)</td>
+                    <td>@subscription.Charges.Count(charge => charge.Status == PaymentStatus.Confirmed)</td>
+                    <td>
+                        @if (subscription.Status == Platega.Subscriptions.SubscriptionStatus.PendingAgreement && subscription.RedirectUrl is not null)
+                        {
+                            <a href="@subscription.RedirectUrl">Подтвердить привязку</a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="mt-2">Подписок пока нет.</p>
+}
+
+@code {
+    private IReadOnlyList<SubscriptionRecord>? _subscriptions;
+    private string? _error;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _subscriptions = await SubscriptionService.ListAsync(CancellationToken.None);
+
+    private async Task SubscribeAsync(string planCode)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            SubscriptionRecord record = await SubscriptionService.CreateAsync(planCode, CancellationToken.None);
+            Navigation.NavigateTo(record.RedirectUrl!, forceLoad: true);
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
+        {
+            _error = $"Не удалось оформить подписку: {exception.Message}";
+            _busy = false;
+        }
+    }
+}

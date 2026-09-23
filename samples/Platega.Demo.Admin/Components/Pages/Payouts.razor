@@ -1,0 +1,171 @@
+@page "/payouts"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using Platega.Payouts
+@inject IPlategaPayoutsClient PayoutsClient
+
+<PageTitle>Выводы — Platega Admin</PageTitle>
+
+<h1>Вывод на карту</h1>
+
+@if (!PayoutsClient.IsConfigured)
+{
+    <div class="alert alert-secondary">
+        Payout API не настроен. Функция подключается по запросу через менеджера Platega; после подключения в ЛК появится
+        раздел Payout API, где выдаётся секретный ключ. Задайте его как <code>Platega:PayoutSecret</code>.
+    </div>
+    return;
+}
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="fs-5">Новый вывод</h2>
+                <div class="mb-3">
+                    <label class="form-label" for="card">Сохранённая карта</label>
+                    <select id="card" class="form-select" @bind="_cardId">
+                        <option value="">— ввести номер карты —</option>
+                        @foreach (SavedCard card in _cards.Where(card => card.Status == "ACTIVE"))
+                        {
+                            <option value="@card.CardId">@card.Masked @card.Label</option>
+                        }
+                    </select>
+                </div>
+                @if (string.IsNullOrEmpty(_cardId))
+                {
+                    <div class="mb-3">
+                        <label class="form-label" for="pan">Номер карты</label>
+                        <input id="pan" class="form-control" inputmode="numeric" autocomplete="off" @bind="_cardNumber" placeholder="2200000000000000" />
+                    </div>
+                }
+                <div class="mb-3">
+                    <label class="form-label" for="amount">Сумма, ₽</label>
+                    <input id="amount" type="number" class="form-control" min="@CardPayoutRequest.MinAmountRub" max="@CardPayoutRequest.MaxAmountRub" @bind="_amount" />
+                    <div class="form-text">От @CardPayoutRequest.MinAmountRub до @CardPayoutRequest.MaxAmountRub ₽, списывается с USDT-баланса.</div>
+                </div>
+
+                @if (_confirming)
+                {
+                    <div class="alert alert-warning">
+                        Вывести <b>@_amount ₽</b> на @(string.IsNullOrEmpty(_cardId) ? $"карту •••• {Last4(_cardNumber)}" : "выбранную карту")?
+                        <div class="mt-2">
+                            <button class="btn btn-danger btn-sm" disabled="@_busy" @onclick="() => SubmitAsync(null)">Подтвердить вывод</button>
+                            <button class="btn btn-link btn-sm" @onclick="() => _confirming = false">Отмена</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="() => _confirming = true">Продолжить</button>
+                }
+            </div>
+        </div>
+
+        @if (_result is not null)
+        {
+            <div class="alert alert-success mt-3">
+                Вывод создан: @_result.WithdrawalRecordId, статус @_result.Status, карта @_result.CardMasked,
+                списано @_result.AmountUsdtDebited USDT.
+            </div>
+        }
+
+        @if (_retryKey is not null)
+        {
+            <div class="alert alert-warning mt-3">
+                Результат запроса неизвестен. Повтор с тем же <code>Idempotency-Key</code> не создаст второй вывод.
+                <button class="btn btn-warning btn-sm ms-2" disabled="@_busy" @onclick="() => SubmitAsync(_retryKey)">Повторить безопасно</button>
+            </div>
+        }
+    </div>
+
+    <div class="col-lg-6">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="fs-5 mb-0">Сохранённые карты</h2>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadCardsAsync">Обновить</button>
+        </div>
+        <table class="table table-sm mt-2">
+            <thead><tr><th>Карта</th><th>Банк/бренд</th><th>Метка</th><th>Статус</th></tr></thead>
+            <tbody>
+                @foreach (SavedCard card in _cards)
+                {
+                    <tr><td>@card.Masked</td><td>@card.Brand</td><td>@card.Label</td><td>@card.Status</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<SavedCard> _cards = [];
+    private string _cardId = string.Empty;
+    private string _cardNumber = string.Empty;
+    private int _amount = CardPayoutRequest.MinAmountRub;
+    private CardPayoutResult? _result;
+    private string? _retryKey;
+    private string? _error;
+    private bool _busy;
+    private bool _confirming;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (PayoutsClient.IsConfigured)
+        {
+            await LoadCardsAsync();
+        }
+    }
+
+    private static string Last4(string number) => number.Length >= 4 ? number[^4..] : number;
+
+    private async Task LoadCardsAsync()
+    {
+        try
+        {
+            _cards = await PayoutsClient.GetSavedCardsAsync(onlyActive: false);
+        }
+        catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
+        {
+            _error = $"Не удалось загрузить карты: {exception.Message}";
+        }
+    }
+
+    private async Task SubmitAsync(string? idempotencyKey)
+    {
+        _busy = true;
+        _error = null;
+        _result = null;
+        string key = idempotencyKey ?? Guid.NewGuid().ToString("D");
+        try
+        {
+            CardPayoutRequest request = string.IsNullOrEmpty(_cardId)
+                ? new CardPayoutRequest { CardNumber = _cardNumber.Replace(" ", string.Empty, StringComparison.Ordinal), AmountRub = _amount }
+                : new CardPayoutRequest { CardId = _cardId, AmountRub = _amount };
+            _result = await PayoutsClient.CreateCardPayoutAsync(request, key);
+            _retryKey = null;
+            _confirming = false;
+        }
+        catch (PlategaApiException exception)
+        {
+            _error = exception.Message;
+            _retryKey = null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _error = $"Сбой связи: {exception.Message}";
+            _retryKey = key;
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
