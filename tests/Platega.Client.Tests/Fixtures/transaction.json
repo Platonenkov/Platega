@@ -1,0 +1,22 @@
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "status": "PENDING",
+  "paymentDetails": {
+    "amount": 2000,
+    "currency": "RUB"
+  },
+  "merchantName": "Demo Merchant",
+  "mechantId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "comission": 0,
+  "paymentMethod": "SBPQR",
+  "expiresIn": "00:15:00",
+  "return": "https://example.com/success",
+  "comissionUsdt": 1.64044944,
+  "amountUsdt": 10.8988764,
+  "qr": "base64-qr-data-or-url",
+  "payformSuccessUrl": "https://pay.platega.io/success",
+  "payload": "custom-payload",
+  "comissionType": 1,
+  "externalId": "0000a4f3-0000-0000-b8ac-fcb675a0000a",
+  "description": "Оплата заказа #12345"
+}

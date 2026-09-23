@@ -1,0 +1,22 @@
+{
+  "id": "11111111-1111-1111-1111-111111111111",
+  "status": "Active",
+  "amount": 100,
+  "currencyCode": "RUB",
+  "intervalUnit": "Month",
+  "intervalCount": 1,
+  "startAt": "2026-07-08T09:00:00Z",
+  "nextChargeAt": "2026-08-09T09:10:00Z",
+  "lastChargeAt": "2026-07-09T09:10:00Z",
+  "description": "Premium подписка",
+  "createdAt": "2026-07-08T09:00:00Z",
+  "customerEmail": "payer@example.com",
+  "chargeMetrics": {
+    "chargesTotal": 1,
+    "chargesSuccess": 1,
+    "chargesFailed": 0,
+    "totalAmount": 100,
+    "lastChargeAt": "2026-07-09T09:10:00Z",
+    "nextChargeAt": "2026-08-09T09:10:00Z"
+  }
+}

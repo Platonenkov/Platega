@@ -1,0 +1,11 @@
+[
+  {
+    "amount": 15000.5,
+    "currency": "RUB"
+  },
+  {
+    "amount": 200,
+    "currency": "USDT",
+    "frozenBalance": 500
+  }
+]

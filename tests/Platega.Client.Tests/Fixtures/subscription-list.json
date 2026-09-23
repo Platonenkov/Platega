@@ -1,0 +1,35 @@
+{
+  "items": [
+    {
+      "id": "480bc68d-8114-4af1-9637-2ca73e5cfdfc",
+      "status": 4,
+      "amount": 100,
+      "currencyCode": "RUB",
+      "intervalUnit": 3,
+      "intervalCount": 1,
+      "nextChargeAt": null,
+      "lastChargeAt": null,
+      "customerEmail": null,
+      "description": "вапвапвап",
+      "chargesCount": 0,
+      "createdAt": "2026-07-14T13:23:16.164247Z"
+    },
+    {
+      "id": "c036f0c3-45f7-4650-92aa-3b3739855116",
+      "status": 4,
+      "amount": 100,
+      "currencyCode": "RUB",
+      "intervalUnit": 2,
+      "intervalCount": 1,
+      "nextChargeAt": null,
+      "lastChargeAt": null,
+      "customerEmail": "example@mail.ru",
+      "description": "Подписка",
+      "chargesCount": 0,
+      "createdAt": "2026-07-14T08:27:03.675156Z"
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "size": 20
+}

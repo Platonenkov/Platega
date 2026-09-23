@@ -1,0 +1,10 @@
+{
+  "Id": "33333333-3333-3333-3333-333333333333",
+  "Amount": 100,
+  "Currency": "RUB",
+  "Status": "CANCELED",
+  "PaymentMethod": 6,
+  "Payload": "",
+  "SubscriptionId": "11111111-1111-1111-1111-111111111111",
+  "NextChargeAt": null
+}
