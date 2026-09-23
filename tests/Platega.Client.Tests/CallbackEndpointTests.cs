@@ -28,6 +28,8 @@ public sealed class CallbackEndpointTests : IAsyncLifetime
         builder.Services.AddSingleton<IPlategaCallbackHandler>(_handler);
 
         _app = builder.Build();
+        _app.UseStatusCodePagesWithReExecute("/not-found");
+        _app.MapGet("/not-found", () => "not found page");
         _app.MapPlategaCallback();
         await _app.StartAsync(TestContext.Current.CancellationToken);
         _client = _app.GetTestClient();

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,13 @@ public static class PlategaEndpointRouteBuilderExtensions
 
     private static async Task HandleAsync(HttpContext context)
     {
+        // Status code pages would replace empty 4xx/5xx answers (or re-execute them as another request),
+        // hiding the status Platega relies on for retries.
+        if (context.Features.Get<IStatusCodePagesFeature>() is { } statusCodePages)
+        {
+            statusCodePages.Enabled = false;
+        }
+
         IResult result = await ProcessAsync(context).ConfigureAwait(false);
         await result.ExecuteAsync(context).ConfigureAwait(false);
     }
