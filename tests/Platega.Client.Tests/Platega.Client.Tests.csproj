@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Platega.Client\Platega.Client.csproj" />
     <ProjectReference Include="..\..\src\Platega.Client.AspNetCore\Platega.Client.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\samples\Platega.FakeServer\Platega.FakeServer.csproj" />
   </ItemGroup>
 
 </Project>
