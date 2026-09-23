@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Local agent tooling
 .claude/
+
+# Deployment secrets
+deploy/.env

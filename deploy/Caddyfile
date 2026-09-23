@@ -1,0 +1,14 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$SHOP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy shop:8080
+}
+
+# Callback URL for the Platega cabinet: https://{$ADMIN_DOMAIN}/platega/callback
+{$ADMIN_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy admin:8080
+}

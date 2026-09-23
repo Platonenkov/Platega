@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Platega.AspNetCore;
 using Platega.Demo.Admin;
@@ -27,6 +28,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
+
+if (builder.Configuration["Demo:KeysPath"] is { Length: > 0 } keysPath)
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(keysPath, "admin")))
+        .SetApplicationName("Platega.Demo.Admin");
+}
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

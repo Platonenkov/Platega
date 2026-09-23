@@ -1,0 +1,59 @@
+# Test server deployment: Caddy terminates TLS (Let's Encrypt) and proxies to the two demo apps.
+# Usage: cp .env.example .env && edit .env && docker compose up -d --build
+name: platega-demo
+
+services:
+  shop:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        APP: Platega.Demo.Shop
+    restart: unless-stopped
+    environment:
+      Platega__MerchantId: ${PLATEGA_MERCHANT_ID:?set PLATEGA_MERCHANT_ID}
+      Platega__Secret: ${PLATEGA_SECRET:?set PLATEGA_SECRET}
+      Platega__BaseAddress: ${PLATEGA_BASE_ADDRESS:-https://app.platega.io/}
+      Shop__PublicBaseUrl: https://${SHOP_DOMAIN}/
+    volumes:
+      - demo-data:/data
+
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        APP: Platega.Demo.Admin
+    restart: unless-stopped
+    environment:
+      Platega__MerchantId: ${PLATEGA_MERCHANT_ID:?set PLATEGA_MERCHANT_ID}
+      Platega__Secret: ${PLATEGA_SECRET:?set PLATEGA_SECRET}
+      Platega__PayoutSecret: ${PLATEGA_PAYOUT_SECRET:-}
+      Platega__BaseAddress: ${PLATEGA_BASE_ADDRESS:-https://app.platega.io/}
+      Admin__Password: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+    volumes:
+      - demo-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SHOP_DOMAIN: ${SHOP_DOMAIN:?set SHOP_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?set ADMIN_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - shop
+      - admin
+
+volumes:
+  demo-data:
+  caddy-data:
+  caddy-config:
