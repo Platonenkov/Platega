@@ -44,11 +44,15 @@ public static class AdminAccount
         ClaimsIdentity identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, "admin")], CookieAuthenticationDefaults.AuthenticationScheme);
         await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 
-        string target = !string.IsNullOrEmpty(returnUrl) && Uri.IsWellFormedUriString(returnUrl, UriKind.Relative) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//", StringComparison.Ordinal)
-            ? returnUrl
-            : "/";
-        return Results.LocalRedirect(target);
+        return Results.LocalRedirect(IsLocalPath(returnUrl) ? returnUrl! : "/");
     }
+
+    /// <summary>Same rule as <c>IUrlHelper.IsLocalUrl</c>: a rooted path that is not protocol-relative (<c>//</c> or <c>/\</c>).</summary>
+    internal static bool IsLocalPath(string? url) =>
+        !string.IsNullOrEmpty(url)
+        && url[0] == '/'
+        && (url.Length == 1 || (url[1] != '/' && url[1] != '\\'))
+        && !url.Any(char.IsControl);
 
     private static async Task<IResult> LogoutAsync(HttpContext context)
     {

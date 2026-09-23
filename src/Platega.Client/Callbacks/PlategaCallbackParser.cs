@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -96,7 +97,9 @@ public sealed class PlategaCallbackParser(IOptionsMonitor<PlategaOptions> option
             PaymentMethod = wire.PaymentMethod is { } method ? (PaymentMethod)method : PaymentMethod.Unknown,
             Payload = wire.Payload,
             SubscriptionId = subscriptionId ?? (isSubscriptionStatus ? id : null),
-            NextChargeAt = wire.NextChargeAt,
+            NextChargeAt = DateTimeOffset.TryParse(wire.NextChargeAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset nextChargeAt)
+                ? nextChargeAt
+                : null,
             RawJson = Encoding.UTF8.GetString(body),
         };
         error = null;

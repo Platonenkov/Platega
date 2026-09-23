@@ -34,6 +34,8 @@ internal abstract class TolerantEnumConverter<TEnum> : JsonConverter<TEnum>
         _writeAsCode = writeAsCode;
     }
 
+    public override bool HandleNull => true;
+
     public override TEnum Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         switch (reader.TokenType)

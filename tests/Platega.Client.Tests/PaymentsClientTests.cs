@@ -168,6 +168,16 @@ public sealed class PaymentsClientTests : IDisposable
         Assert.Equal(new Money(10m, "BYN"), transaction.Amount);
     }
 
+    [Fact]
+    public async Task NullStatus_IsReadAsUnknown()
+    {
+        _host.Handler.Respond(HttpStatusCode.OK, "{\"id\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"status\":null}");
+
+        PlategaTransaction transaction = await _host.Client.Payments.GetTransactionAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(PaymentStatus.Unknown, transaction.Status);
+    }
+
     [Theory]
     [InlineData(PaymentMethod.Subscription)]
     [InlineData(PaymentMethod.Unknown)]

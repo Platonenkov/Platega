@@ -88,6 +88,20 @@ public sealed class CallbackParserTests
         Assert.Equal((PaymentMethod)99, callback.PaymentMethod);
     }
 
+    [Fact]
+    public void TryParse_ToleratesMalformedOptionalDate()
+    {
+        bool parsed = PlategaCallbackParser.TryParse(
+            "{\"Id\":\"33333333-3333-3333-3333-333333333333\",\"Status\":\"CONFIRMED\",\"SubscriptionId\":\"11111111-1111-1111-1111-111111111111\",\"NextChargeAt\":\"\"}"u8,
+            out PlategaCallback? callback,
+            out string? error);
+
+        Assert.True(parsed, error);
+        Assert.NotNull(callback);
+        Assert.Equal(PlategaCallbackKind.SubscriptionCharge, callback.Kind);
+        Assert.Null(callback.NextChargeAt);
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("{}")]

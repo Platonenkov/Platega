@@ -91,5 +91,6 @@ internal sealed record CallbackWire
 
     public string? SubscriptionId { get; init; }
 
-    public DateTimeOffset? NextChargeAt { get; init; }
+    /// <summary>Kept as text: a malformed optional date must not cause the whole callback to be rejected.</summary>
+    public string? NextChargeAt { get; init; }
 }
