@@ -32,6 +32,29 @@ public sealed class ServiceRegistrationTests
     }
 
     [Fact]
+    public void AddPlatega_PicksUpRotatedSecretOnConfigurationReload()
+    {
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Platega:MerchantId"] = "29ef0000-0000-0000-0000-000000000001",
+                ["Platega:Secret"] = "old-secret",
+            })
+            .Build();
+
+        ServiceCollection services = new ServiceCollection();
+        services.AddPlatega(configuration.GetSection(PlategaOptions.SectionName));
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IOptionsMonitor<PlategaOptions> monitor = provider.GetRequiredService<IOptionsMonitor<PlategaOptions>>();
+        Assert.Equal("old-secret", monitor.CurrentValue.Secret);
+
+        configuration["Platega:Secret"] = "new-secret";
+        configuration.Reload();
+
+        Assert.Equal("new-secret", monitor.CurrentValue.Secret);
+    }
+
+    [Fact]
     public void AddPlatega_FailsValidationWithoutCredentials()
     {
         ServiceCollection services = new ServiceCollection();

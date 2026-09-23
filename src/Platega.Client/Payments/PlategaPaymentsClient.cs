@@ -53,11 +53,12 @@ internal sealed class PlategaPaymentsClient(PlategaConnection connection) : IPla
                     cancellationToken)
                 .ConfigureAwait(false);
 
+            EnsureCreated(created.TransactionId, created.Url, "POST v2/transaction/process");
             return new CreatedPayment
             {
                 TransactionId = created.TransactionId,
                 Status = created.Status,
-                PaymentUrl = created.Url ?? string.Empty,
+                PaymentUrl = created.Url!,
                 ExpiresIn = created.ExpiresIn,
                 UsdtRate = created.Rate,
             };
@@ -72,11 +73,12 @@ internal sealed class PlategaPaymentsClient(PlategaConnection connection) : IPla
                 cancellationToken)
             .ConfigureAwait(false);
 
+        EnsureCreated(createdWithMethod.TransactionId, createdWithMethod.Redirect, "POST transaction/process");
         return new CreatedPayment
         {
             TransactionId = createdWithMethod.TransactionId,
             Status = createdWithMethod.Status,
-            PaymentUrl = createdWithMethod.Redirect ?? string.Empty,
+            PaymentUrl = createdWithMethod.Redirect!,
             ExpiresIn = createdWithMethod.ExpiresIn,
             UsdtRate = createdWithMethod.UsdtRate,
             PaymentMethodName = createdWithMethod.PaymentMethod,
@@ -143,6 +145,15 @@ internal sealed class PlategaPaymentsClient(PlategaConnection connection) : IPla
         }
 
         return fileUri;
+    }
+
+    /// <summary>A 200 answer without an id or a link is not a created payment.</summary>
+    internal static void EnsureCreated(Guid id, string? url, string endpoint)
+    {
+        if (id == Guid.Empty || string.IsNullOrWhiteSpace(url))
+        {
+            throw new PlategaApiException(System.Net.HttpStatusCode.OK, endpoint, "Response has no transaction id or payment link.");
+        }
     }
 
     private static void Validate(CreatePaymentRequest request)

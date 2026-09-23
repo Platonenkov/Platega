@@ -57,7 +57,7 @@ internal sealed class PlategaConnection(HttpClient httpClient)
         using (request)
         {
             using HttpResponseMessage response = await httpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken)
                 .ConfigureAwait(false);
 
             return await PlategaResponseReader

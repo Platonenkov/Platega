@@ -11,6 +11,8 @@ public sealed class SubscriptionService(
     TimeProvider timeProvider,
     ILogger<SubscriptionService> logger)
 {
+    private const int MaxAttempts = 3;
+
     public async Task<SubscriptionRecord> CreateAsync(string planCode, CancellationToken cancellationToken)
     {
         SubscriptionPlan plan = DemoCatalog.FindPlan(planCode)
@@ -56,24 +58,54 @@ public sealed class SubscriptionService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>Refreshes a subscription from <c>GET /subscription/{id}</c>. Returns null for subscriptions unknown locally.</summary>
-    public async Task<SubscriptionRecord?> SyncAsync(Guid subscriptionId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Refreshes a subscription from <c>GET /subscription/{id}</c>. A subscription missing locally
+    /// (for example, the local save failed after Platega created it) is recreated from the API.
+    /// </summary>
+    public async Task<SubscriptionRecord> SyncAsync(Guid subscriptionId, CancellationToken cancellationToken)
     {
-        await using DemoDbContext db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        SubscriptionRecord? record = await db.Subscriptions.FirstOrDefaultAsync(item => item.Id == subscriptionId, cancellationToken);
-        if (record is null)
+        for (int attempt = 1; ; attempt++)
         {
-            logger.LogWarning("Subscription {SubscriptionId} is not known locally", subscriptionId);
-            return null;
-        }
+            PlategaSubscription remote = await subscriptions.GetAsync(subscriptionId, cancellationToken);
+            DateTimeOffset now = timeProvider.GetUtcNow();
 
-        PlategaSubscription remote = await subscriptions.GetAsync(subscriptionId, cancellationToken);
-        record.Status = remote.Status;
-        record.CustomerEmail = remote.CustomerEmail;
-        record.NextChargeAt = remote.NextChargeAt;
-        record.UpdatedAt = timeProvider.GetUtcNow();
-        await db.SaveChangesAsync(cancellationToken);
-        return record;
+            await using DemoDbContext db = await dbFactory.CreateDbContextAsync(cancellationToken);
+            SubscriptionRecord? record = await db.Subscriptions.FirstOrDefaultAsync(item => item.Id == subscriptionId, cancellationToken);
+            if (record is null)
+            {
+                logger.LogWarning("Subscription {SubscriptionId} was unknown locally, restoring it from the API", subscriptionId);
+                record = new SubscriptionRecord
+                {
+                    Id = subscriptionId,
+                    PlanCode = "external",
+                    PlanName = remote.Description ?? "Без тарифа",
+                    Amount = (int)remote.Amount,
+                    Interval = remote.IntervalUnit,
+                    IntervalCount = remote.IntervalCount,
+                    CreatedAt = remote.CreatedAt ?? now,
+                };
+                db.Subscriptions.Add(record);
+            }
+
+            if (Rank(remote.Status) >= Rank(record.Status))
+            {
+                record.Status = remote.Status;
+            }
+
+            record.CustomerEmail = remote.CustomerEmail ?? record.CustomerEmail;
+            record.NextChargeAt = remote.NextChargeAt;
+            record.UpdatedAt = now;
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return record;
+            }
+            catch (DbUpdateException) when (attempt < MaxAttempts)
+            {
+                logger.LogInformation("Subscription {SubscriptionId} changed concurrently, re-reading", subscriptionId);
+            }
+        }
     }
 
     public async Task CancelAsync(Guid subscriptionId, CancellationToken cancellationToken)
@@ -86,9 +118,12 @@ public sealed class SubscriptionService(
     public async Task RecordChargeAsync(Guid subscriptionId, Guid chargeId, PaymentStatus status, decimal amount, CancellationToken cancellationToken)
     {
         await using DemoDbContext db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        bool known = await db.Subscriptions.AnyAsync(item => item.Id == subscriptionId, cancellationToken);
-        bool duplicate = await db.SubscriptionCharges.AnyAsync(item => item.Id == chargeId, cancellationToken);
-        if (!known || duplicate)
+        if (!await db.Subscriptions.AnyAsync(item => item.Id == subscriptionId, cancellationToken))
+        {
+            throw new InvalidOperationException($"Subscription {subscriptionId} is unknown; the charge callback will be retried.");
+        }
+
+        if (await db.SubscriptionCharges.AnyAsync(item => item.Id == chargeId, cancellationToken))
         {
             return;
         }
@@ -101,6 +136,33 @@ public sealed class SubscriptionService(
             Amount = amount,
             ReceivedAt = timeProvider.GetUtcNow(),
         });
-        await db.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent delivery of the same callback may have stored it first; anything else is a real failure.
+            if (!await IsRecordedAsync(chargeId, cancellationToken))
+            {
+                throw;
+            }
+        }
+    }
+
+    /// <summary>Cancelled and Failed are final; a stale read must not bring them back.</summary>
+    internal static int Rank(SubscriptionStatus status) => status switch
+    {
+        SubscriptionStatus.PendingAgreement => 0,
+        SubscriptionStatus.Active or SubscriptionStatus.PastDue => 1,
+        SubscriptionStatus.Cancelled or SubscriptionStatus.Failed => 2,
+        _ => -1,
+    };
+
+    private async Task<bool> IsRecordedAsync(Guid chargeId, CancellationToken cancellationToken)
+    {
+        await using DemoDbContext db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.SubscriptionCharges.AnyAsync(item => item.Id == chargeId, cancellationToken);
     }
 }

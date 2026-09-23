@@ -48,10 +48,11 @@ internal sealed class PlategaSubscriptionsClient(PlategaConnection connection) :
                 cancellationToken)
             .ConfigureAwait(false);
 
+        Payments.PlategaPaymentsClient.EnsureCreated(created.TransactionId, created.Redirect, "POST transaction/process");
         return new CreatedSubscription
         {
             SubscriptionId = created.TransactionId,
-            RedirectUrl = created.Redirect ?? string.Empty,
+            RedirectUrl = created.Redirect!,
             Status = created.Status,
             MerchantId = created.MerchantId,
         };

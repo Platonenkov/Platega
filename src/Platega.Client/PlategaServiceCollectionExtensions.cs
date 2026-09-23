@@ -19,7 +19,10 @@ public static class PlategaServiceCollectionExtensions
     public static IServiceCollection AddPlatega(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        return services.AddPlatega(options => configuration.Bind(options));
+
+        // OptionsBuilder.Bind registers a change token source, so a rotated key is picked up by IOptionsMonitor.
+        services.AddOptions<PlategaOptions>().Bind(configuration);
+        return services.AddPlatega(static _ => { });
     }
 
     /// <summary>Registers the Platega client configured by a delegate.</summary>
@@ -40,8 +43,10 @@ public static class PlategaServiceCollectionExtensions
         services.TryAddTransient<PlategaAuthHandler>();
 
         services.AddHttpClient<PlategaConnection>(ConfigureHttpClient)
+            .ConfigurePrimaryHttpMessageHandler(CreatePrimaryHandler)
             .AddHttpMessageHandler<PlategaAuthHandler>();
-        services.AddHttpClient<IPlategaPayoutsClient, PlategaPayoutsClient>(ConfigureHttpClient);
+        services.AddHttpClient<IPlategaPayoutsClient, PlategaPayoutsClient>(ConfigureHttpClient)
+            .ConfigurePrimaryHttpMessageHandler(CreatePrimaryHandler);
 
         services.TryAddTransient<IPlategaPaymentsClient, PlategaPaymentsClient>();
         services.TryAddTransient<IPlategaRefundsClient, PlategaRefundsClient>();
@@ -52,6 +57,16 @@ public static class PlategaServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Redirects are disabled: on a redirect the default handler drops <c>Authorization</c> but forwards custom headers,
+    /// so <c>X-Secret</c> would reach whatever host the <c>Location</c> points to.
+    /// </summary>
+    private static HttpMessageHandler CreatePrimaryHandler() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    };
 
     private static void ConfigureHttpClient(IServiceProvider serviceProvider, HttpClient httpClient)
     {

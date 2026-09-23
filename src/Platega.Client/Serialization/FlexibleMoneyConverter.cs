@@ -33,9 +33,10 @@ internal sealed class FlexibleMoneyConverter : JsonConverter<Money?>
                     {
                         amount = ReadDecimal(ref reader);
                     }
-                    else if (string.Equals(property, "currency", StringComparison.OrdinalIgnoreCase))
+                    else if (string.Equals(property, "currency", StringComparison.OrdinalIgnoreCase)
+                        && reader.TokenType == JsonTokenType.String)
                     {
-                        currency = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+                        currency = reader.GetString();
                     }
                     else
                     {
@@ -82,10 +83,18 @@ internal sealed class FlexibleMoneyConverter : JsonConverter<Money?>
         return new Money(amount, parts.Length > 1 ? parts[1] : string.Empty);
     }
 
-    private static decimal? ReadDecimal(ref Utf8JsonReader reader) => reader.TokenType switch
+    /// <summary>Reads a decimal and always leaves the reader on the last token of the value, even for nested containers.</summary>
+    private static decimal? ReadDecimal(ref Utf8JsonReader reader)
     {
-        JsonTokenType.Number => reader.GetDecimal(),
-        JsonTokenType.String when decimal.TryParse(reader.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsed) => parsed,
-        _ => null,
-    };
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.Number:
+                return reader.TryGetDecimal(out decimal number) ? number : null;
+            case JsonTokenType.String:
+                return decimal.TryParse(reader.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsed) ? parsed : null;
+            default:
+                reader.Skip();
+                return null;
+        }
+    }
 }

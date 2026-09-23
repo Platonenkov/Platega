@@ -42,18 +42,46 @@ public sealed class PayoutsClientTests
     }
 
     [Fact]
-    public async Task CreateCardPayout_GeneratesIdempotencyKeyWhenOmitted()
+    public async Task CreateCardPayout_WithSavedCard_SendsOnlyCardId()
     {
         using PlategaTestHost host = new PlategaTestHost();
         host.Handler.RespondWithFixture("payout.json");
 
-        CardPayoutResult result = await host.Client.Payouts.CreateCardPayoutAsync(
+        await host.Client.Payouts.CreateCardPayoutAsync(
             new CardPayoutRequest { CardId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890", AmountRub = 1000 },
-            cancellationToken: TestContext.Current.CancellationToken);
+            IdempotencyKey,
+            TestContext.Current.CancellationToken);
 
-        Assert.True(Guid.TryParse(result.IdempotencyKey, out _));
-        Assert.Equal(result.IdempotencyKey, host.Handler.LastRequest.Header("Idempotency-Key"));
+        Assert.Contains("\"cardId\":\"a1b2c3d4-e5f6-7890-abcd-ef1234567890\"", host.Handler.LastRequest.BodyText, StringComparison.Ordinal);
         Assert.DoesNotContain("cardNumber", host.Handler.LastRequest.BodyText, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task CreateCardPayout_RequiresIdempotencyKey(string key)
+    {
+        using PlategaTestHost host = new PlategaTestHost();
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => host.Client.Payouts.CreateCardPayoutAsync(
+                new CardPayoutRequest { CardNumber = "2200000000000000", AmountRub = 1500 },
+                key,
+                TestContext.Current.CancellationToken));
+        Assert.Empty(host.Handler.Requests);
+    }
+
+    [Fact]
+    public async Task CreateCardPayout_RejectsSuccessWithoutRecordId()
+    {
+        using PlategaTestHost host = new PlategaTestHost();
+        host.Handler.Respond(System.Net.HttpStatusCode.OK, "{}");
+
+        await Assert.ThrowsAsync<PlategaApiException>(
+            () => host.Client.Payouts.CreateCardPayoutAsync(
+                new CardPayoutRequest { CardNumber = "2200000000000000", AmountRub = 1500 },
+                IdempotencyKey,
+                TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -105,7 +133,8 @@ public sealed class PayoutsClientTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => host.Client.Payouts.CreateCardPayoutAsync(
                 new CardPayoutRequest { CardNumber = "2200000000000000", AmountRub = amount },
-                cancellationToken: TestContext.Current.CancellationToken));
+                IdempotencyKey,
+                TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -119,7 +148,8 @@ public sealed class PayoutsClientTests
         await Assert.ThrowsAsync<ArgumentException>(
             () => host.Client.Payouts.CreateCardPayoutAsync(
                 new CardPayoutRequest { CardId = cardId, CardNumber = cardNumber, AmountRub = 1500 },
-                cancellationToken: TestContext.Current.CancellationToken));
+                IdempotencyKey,
+                TestContext.Current.CancellationToken));
     }
 
     [Fact]

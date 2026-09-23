@@ -8,7 +8,8 @@ namespace Platega.Demo.Data.Services;
 
 /// <summary>
 /// Safety net for lost callbacks (and the only update path when callbacks cannot reach a local machine):
-/// periodically re-checks recent pending payments and subscriptions awaiting binding.
+/// periodically re-checks pending payments and subscriptions awaiting binding. The window is a day, so an outage
+/// longer than Platega's callback retries is still reconciled; expired links turn final and drop out of the query.
 /// </summary>
 public sealed class PendingPaymentsPoller(
     IServiceScopeFactory scopeFactory,
@@ -16,7 +17,7 @@ public sealed class PendingPaymentsPoller(
     ILogger<PendingPaymentsPoller> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan MaxAge = TimeSpan.FromHours(1);
+    private static readonly TimeSpan MaxAge = TimeSpan.FromDays(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

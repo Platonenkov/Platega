@@ -26,6 +26,7 @@ public sealed class DemoDbContext(DbContextOptions<DemoDbContext> options) : DbC
         {
             order.Property(item => item.Status).HasConversion<string>().HasMaxLength(32);
             order.Property(item => item.Method).HasConversion<string>().HasMaxLength(32);
+            order.Property(item => item.UpdatedAt).IsConcurrencyToken();
             order.HasIndex(item => item.TransactionId).IsUnique();
             order.HasIndex(item => new { item.Status, item.CreatedAt });
         });
@@ -35,6 +36,7 @@ public sealed class DemoDbContext(DbContextOptions<DemoDbContext> options) : DbC
             subscription.Property(item => item.Id).ValueGeneratedNever();
             subscription.Property(item => item.Status).HasConversion<string>().HasMaxLength(32);
             subscription.Property(item => item.Interval).HasConversion<string>().HasMaxLength(16);
+            subscription.Property(item => item.UpdatedAt).IsConcurrencyToken();
             subscription.HasMany(item => item.Charges).WithOne().HasForeignKey(charge => charge.SubscriptionId);
         });
 

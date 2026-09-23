@@ -142,8 +142,9 @@ public sealed class FakeServerIntegrationTests : IClassFixture<FakeServerIntegra
         Assert.Equal(2, cards.Count);
 
         CardPayoutRequest request = new CardPayoutRequest { CardId = cards[0].CardId, AmountRub = 1500 };
-        CardPayoutResult first = await Client.Payouts.CreateCardPayoutAsync(request, cancellationToken: cancellationToken);
-        CardPayoutResult retry = await Client.Payouts.CreateCardPayoutAsync(request, first.IdempotencyKey, cancellationToken);
+        string key = Guid.NewGuid().ToString("D");
+        CardPayoutResult first = await Client.Payouts.CreateCardPayoutAsync(request, key, cancellationToken);
+        CardPayoutResult retry = await Client.Payouts.CreateCardPayoutAsync(request, key, cancellationToken);
 
         Assert.Equal("CREATED", first.Status);
         Assert.Equal(first.WithdrawalRecordId, retry.WithdrawalRecordId);

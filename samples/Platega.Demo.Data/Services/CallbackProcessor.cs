@@ -33,7 +33,7 @@ public sealed class CallbackProcessor(
         switch (callback.Kind)
         {
             case PlategaCallbackKind.Payment:
-                Order? order = await paymentSync.SyncTransactionAsync(callback.Id, cancellationToken);
+                Order? order = await paymentSync.SyncTransactionAsync(callback.Id, callback.Payload, cancellationToken);
                 if (order is not null && order.Status != callback.PaymentStatus)
                 {
                     logger.LogWarning(
@@ -46,8 +46,8 @@ public sealed class CallbackProcessor(
                 break;
 
             case PlategaCallbackKind.SubscriptionCharge when callback.SubscriptionId is { } subscriptionId:
-                await subscriptionService.RecordChargeAsync(subscriptionId, callback.Id, callback.PaymentStatus, callback.Amount ?? 0m, cancellationToken);
                 await subscriptionService.SyncAsync(subscriptionId, cancellationToken);
+                await subscriptionService.RecordChargeAsync(subscriptionId, callback.Id, callback.PaymentStatus, callback.Amount ?? 0m, cancellationToken);
                 break;
 
             case PlategaCallbackKind.SubscriptionStatusChanged:

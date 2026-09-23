@@ -168,6 +168,29 @@ public sealed class PaymentsClientTests : IDisposable
         Assert.Equal(new Money(10m, "BYN"), transaction.Amount);
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"transactionId\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"status\":\"PENDING\"}")]
+    public async Task CreatePayment_RejectsSuccessWithoutIdOrLink(string body)
+    {
+        _host.Handler.Respond(HttpStatusCode.OK, body);
+
+        await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Payments.CreatePaymentAsync(NewRequest(null), TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("{\"id\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"paymentDetails\":{\"amount\":1e100,\"currency\":\"RUB\"}}")]
+    [InlineData("{\"id\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"paymentDetails\":{\"amount\":[1],\"currency\":{\"code\":643}}}")]
+    public async Task MalformedAmount_IsReadAsMissing(string body)
+    {
+        _host.Handler.Respond(HttpStatusCode.OK, body);
+
+        PlategaTransaction transaction = await _host.Client.Payments.GetTransactionAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.Null(transaction.Amount);
+    }
+
     [Fact]
     public async Task NullStatus_IsReadAsUnknown()
     {

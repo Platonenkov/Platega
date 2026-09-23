@@ -16,12 +16,12 @@ public interface IPlategaPayoutsClient
     bool IsConfigured { get; }
 
     /// <summary>
-    /// Creates a payout to a RUB card. Pass the same <paramref name="idempotencyKey"/> to retry a payout safely;
-    /// a new key is generated when it is omitted.
+    /// Creates a payout to a RUB card. The caller owns <paramref name="idempotencyKey"/>: persist it before the call
+    /// and reuse it when the outcome is unknown (timeout, lost response), otherwise a retry may pay out twice.
     /// </summary>
     Task<CardPayoutResult> CreateCardPayoutAsync(
         CardPayoutRequest request,
-        string? idempotencyKey = null,
+        string idempotencyKey,
         CancellationToken cancellationToken = default);
 
     /// <summary>Returns saved payout cards; only active ones unless <paramref name="onlyActive"/> is false.</summary>
@@ -40,13 +40,14 @@ internal sealed class PlategaPayoutsClient(
 
     public async Task<CardPayoutResult> CreateCardPayoutAsync(
         CardPayoutRequest request,
-        string? idempotencyKey = null,
+        string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
         Validate(request);
 
-        string key = string.IsNullOrWhiteSpace(idempotencyKey) ? Guid.NewGuid().ToString("D") : idempotencyKey;
+        string key = idempotencyKey;
         CardPayoutWireRequest wire = new CardPayoutWireRequest
         {
             CardId = string.IsNullOrWhiteSpace(request.CardId) ? null : request.CardId,
@@ -57,7 +58,7 @@ internal sealed class PlategaPayoutsClient(
         };
 
         byte[] body = JsonSerializer.SerializeToUtf8Bytes(wire, PlategaJsonContext.Relaxed.CardPayoutWireRequest);
-        using HttpRequestMessage message = CreateSignedRequest(HttpMethod.Post, PayoutPath, PayoutPath, key, body);
+        using HttpRequestMessage message = CreateSignedRequest(HttpMethod.Post, PayoutPath, key, body);
         message.Headers.TryAddWithoutValidation("Idempotency-Key", key);
         ByteArrayContent content = new ByteArrayContent(body);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
@@ -65,21 +66,27 @@ internal sealed class PlategaPayoutsClient(
 
         CardPayoutResult result = await SendAsync(message, PayoutPath, PlategaJsonContext.Relaxed.CardPayoutResult, cancellationToken)
             .ConfigureAwait(false);
+        if (result.WithdrawalRecordId == Guid.Empty)
+        {
+            throw new PlategaApiException(System.Net.HttpStatusCode.OK, $"POST {PayoutPath}", "Response has no withdrawalRecordId.");
+        }
+
         return result with { IdempotencyKey = key };
     }
 
     public async Task<IReadOnlyList<SavedCard>> GetSavedCardsAsync(bool onlyActive = true, CancellationToken cancellationToken = default)
     {
         string requestUri = onlyActive ? CardsPath : $"{CardsPath}?onlyActive=false";
-        using HttpRequestMessage message = CreateSignedRequest(HttpMethod.Get, requestUri, CardsPath, string.Empty, []);
+        using HttpRequestMessage message = CreateSignedRequest(HttpMethod.Get, requestUri, string.Empty, []);
         return await SendAsync(message, CardsPath, PlategaJsonContext.Relaxed.ListSavedCard, cancellationToken)
             .ConfigureAwait(false);
     }
 
     /// <remarks>
-    /// The signed PATH excludes the query string. The documentation does not say otherwise; verify against the live API.
+    /// The signed PATH is the absolute path actually sent (base address prefix included), without the query string.
+    /// The documentation does not specify the query part; verify against the live API.
     /// </remarks>
-    private HttpRequestMessage CreateSignedRequest(HttpMethod method, string requestUri, string signedPath, string idempotencyKey, byte[] body)
+    private HttpRequestMessage CreateSignedRequest(HttpMethod method, string requestUri, string idempotencyKey, byte[] body)
     {
         PlategaOptions current = options.CurrentValue;
         if (!current.PayoutsEnabled)
@@ -88,11 +95,12 @@ internal sealed class PlategaPayoutsClient(
                 "Payout API is not configured: set PlategaOptions.PayoutSecret (issued in the merchant cabinet, Payout API section).");
         }
 
+        Uri target = new Uri(httpClient.BaseAddress!, requestUri.TrimStart('/'));
         long timestamp = timeProvider.GetUtcNow().ToUnixTimeSeconds();
-        string stringToSign = PlategaHmacSigner.BuildStringToSign(method.Method, signedPath, timestamp, idempotencyKey, body);
+        string stringToSign = PlategaHmacSigner.BuildStringToSign(method.Method, target.AbsolutePath, timestamp, idempotencyKey, body);
         string signature = PlategaHmacSigner.Sign(current.PayoutSecret!, stringToSign);
 
-        HttpRequestMessage message = new HttpRequestMessage(method, requestUri.TrimStart('/'));
+        HttpRequestMessage message = new HttpRequestMessage(method, target);
         message.Headers.Authorization = new AuthenticationHeaderValue(
             PlategaHmacSigner.Scheme,
             PlategaHmacSigner.BuildAuthorizationParameter(current.MerchantId, timestamp, signature));
@@ -103,7 +111,7 @@ internal sealed class PlategaPayoutsClient(
     private async Task<T> SendAsync<T>(HttpRequestMessage message, string path, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
     {
         using HttpResponseMessage response = await httpClient
-            .SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .SendAsync(message, HttpCompletionOption.ResponseContentRead, cancellationToken)
             .ConfigureAwait(false);
 
         return await PlategaResponseReader
