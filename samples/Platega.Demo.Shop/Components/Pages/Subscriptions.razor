@@ -1,7 +1,7 @@
 @page "/subscriptions"
 @rendermode InteractiveServer
 @inject SubscriptionService SubscriptionService
-@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Подписки — Platega Shop</PageTitle>
 
@@ -13,6 +13,11 @@
     <div class="alert alert-danger">@_error</div>
 }
 
+@if (_notice is not null)
+{
+    <div class="alert alert-info">@_notice</div>
+}
+
 <div class="row row-cols-1 row-cols-md-3 g-3 mb-4">
     @foreach (SubscriptionPlan plan in DemoCatalog.Plans)
     {
@@ -22,7 +27,7 @@
                     <h5 class="card-title">@plan.Name</h5>
                     <p class="text-muted flex-grow-1">@plan.Description</p>
                     <p class="fs-4 fw-semibold">@DemoFormat.Money(plan.Amount, "RUB") <span class="fs-6 fw-normal text-muted">@DemoFormat.Interval(plan.Interval, plan.IntervalCount)</span></p>
-                    <button class="btn btn-primary" disabled="@_busy" @onclick="() => SubscribeAsync(plan.Code)">Оформить</button>
+                    <button class="btn btn-primary" data-payment-window disabled="@_busy" @onclick="() => SubscribeAsync(plan.Code)">Оформить</button>
                 </div>
             </div>
         </div>
@@ -52,7 +57,7 @@
                     <td>
                         @if (subscription.Status == Platega.Subscriptions.SubscriptionStatus.PendingAgreement && subscription.RedirectUrl is not null)
                         {
-                            <a href="@subscription.RedirectUrl">Подтвердить привязку</a>
+                            <a href="@subscription.RedirectUrl" target="_blank" rel="noopener noreferrer">Подтвердить привязку</a>
                         }
                     </td>
                 </tr>
@@ -68,6 +73,7 @@ else
 @code {
     private IReadOnlyList<SubscriptionRecord>? _subscriptions;
     private string? _error;
+    private string? _notice;
     private bool _busy;
 
     protected override Task OnInitializedAsync() => LoadAsync();
@@ -78,14 +84,23 @@ else
     {
         _busy = true;
         _error = null;
+        _notice = null;
         try
         {
             SubscriptionRecord record = await SubscriptionService.CreateAsync(planCode, CancellationToken.None);
-            Navigation.NavigateTo(record.RedirectUrl!, forceLoad: true);
+            bool opened = await JS.InvokeAsync<bool>("plategaPaymentWindow.open", record.RedirectUrl);
+            _notice = opened
+                ? "Страница привязки СБП открыта в новой вкладке. После подтверждения нажмите «Обновить», чтобы увидеть статус."
+                : "Браузер не открыл новую вкладку — перейдите по ссылке «Подтвердить привязку» в таблице.";
+            await LoadAsync();
         }
         catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
         {
+            await JS.InvokeVoidAsync("plategaPaymentWindow.cancel");
             _error = $"Не удалось оформить подписку: {exception.Message}";
+        }
+        finally
+        {
             _busy = false;
         }
     }

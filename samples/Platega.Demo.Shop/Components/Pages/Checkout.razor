@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject OrderService Orders
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Оформление заказа — Platega Shop</PageTitle>
 
@@ -45,7 +46,7 @@
 
             @* Disabled until the circuit is connected: a click on the prerendered page would otherwise post the form
                to the server as a separate component instance and create a second order. *@
-            <button type="submit" class="btn btn-primary btn-lg" disabled="@(_busy || !_interactive)">
+            <button type="submit" class="btn btn-primary btn-lg" data-payment-window disabled="@(_busy || !_interactive)">
                 @(!_interactive ? "Загрузка…" : _busy ? "Создаём платёж…" : $"Оплатить {DemoFormat.Money(_product.Price, _product.Currency)}")
             </button>
         </EditForm>
@@ -60,8 +61,8 @@
             </div>
         </div>
         <p class="small text-muted mt-3">
-            После нажатия «Оплатить» магазин создаёт транзакцию через API Platega и перенаправляет вас на платёжную
-            страницу. Ссылка действует 15 минут.
+            После нажатия «Оплатить» магазин создаёт транзакцию через API Platega и открывает платёжную страницу
+            в новой вкладке, а здесь показывает статус заказа.
         </p>
     </div>
 </div>
@@ -104,10 +105,12 @@
         {
             PaymentMethod? method = _form.MethodKey == AnyMethodKey ? null : (PaymentMethod)int.Parse(_form.MethodKey, System.Globalization.CultureInfo.InvariantCulture);
             Order order = await Orders.CreateAsync(_product.Code, method, _form.CustomerName, CancellationToken.None);
-            Navigation.NavigateTo(order.PaymentUrl!, forceLoad: true);
+            await JS.InvokeAsync<bool>("plategaPaymentWindow.open", order.PaymentUrl);
+            Navigation.NavigateTo($"orders/{order.Id}/result");
         }
         catch (Exception exception) when (exception is PlategaApiException or HttpRequestException or TaskCanceledException)
         {
+            await JS.InvokeVoidAsync("plategaPaymentWindow.cancel");
             _error = $"Не удалось создать платёж: {exception.Message}";
             _busy = false;
         }

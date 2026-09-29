@@ -42,7 +42,8 @@
                 </p>
                 @if (!string.IsNullOrEmpty(_order.PaymentUrl))
                 {
-                    <a class="btn btn-outline-primary" href="@_order.PaymentUrl">Вернуться к оплате</a>
+                    <p class="small text-muted mb-2">Страница оплаты открыта в новой вкладке. Если её нет, откройте её кнопкой ниже.</p>
+                    <a class="btn btn-outline-primary" href="@_order.PaymentUrl" target="_blank" rel="noopener noreferrer">Открыть страницу оплаты</a>
                 }
                 break;
             case PaymentStatus.Confirmed:
