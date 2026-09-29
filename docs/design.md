@@ -20,7 +20,7 @@
 | Сохранённые карты | `GET /api/v1/cards` | `Authorization: PG-HMAC` | `Payouts.GetSavedCardsAsync` |
 | Callback | POST на адрес из ЛК | `X-MerchantId`, `X-Secret` | `PlategaCallbackParser`, `MapPlategaCallback` |
 
-Жизненный цикл платежа: `PENDING` → `CONFIRMED`, `CANCELED` или `CHARGEBACKED`. Ссылка на оплату действует 15 минут.
+Жизненный цикл платежа: `PENDING` → `CONFIRMED`, `CANCELED` или `CHARGEBACKED`. Ссылка на оплату по документации действует 15 минут, на живом API — 30 минут (`expiresIn: "00:30:00"`, 29.09.2026).
 
 Жизненный цикл подписки: `PendingAgreement` → `Active` → `PastDue`, `Cancelled` или `Failed`. На подтверждение привязки даётся 30 минут.
 
@@ -57,13 +57,21 @@
 
 Эти пункты взяты из неполной документации и должны быть сверены с живым API, когда будет выдан ключ:
 
-1. **Числовые коды статуса подписки.** `0` — `PendingAgreement`, `1` — `Active`, `2` — `PastDue`, `3` — `Cancelled`, `4` — `Failed`, по порядку объявления в схеме. Используются в `GET /subscription` и в фильтре `status`.
+1. **Числовые коды статуса подписки.** `0` — `PendingAgreement`, `1` — `Active`, `2` — `PastDue`, `3` — `Cancelled`, `4` — `Failed`, по порядку объявления в схеме. Используются в `GET /subscription` и в фильтре `status`. Проверить пока нельзя: на тестовом аккаунте СБП-подписки не подключены, создание отвечает `400 Common:VAL_0001` с деталью `paymentMethod: Subscription`. Проверяет живой тест `Subscription_NumericListStatusMatchesNamedStatus` после подключения подписок менеджером.
 2. **Коды статусов в выгрузке.** В примере документации — `"6"`, `"7"`, их соответствие не описано. Клиент передаёт коды как есть (`TransactionExportRequest.StatusCodes`).
 3. **PATH в подписи Payout.** Считается без query-строки, в частности для `GET /api/v1/cards?onlyActive=false`.
 4. **Формат тела ошибок.** Подтверждён для 401 и 404 на живом API (29.09.2026): `{"code":"Auth:SIGN_1001","type":4002,"message":"Merchant secret key is not correct.","data":[],"traceId":"…"}`. Поля разбираются в `PlategaApiException.ErrorCode`, `ErrorType`, `ErrorMessage` и `TraceId`, а массив `data` вида `[{"key":"Id","message":"Transaction … not exist"}]` — в `ErrorDetails`. Для 400 формат ещё не видели; тело в любом случае сохраняется в `ResponseBody`. При неверном ключе API отвечает 401 раньше, чем проверяет существование транзакции.
 5. **`localhost` в `return` и `failedUrl`.** Неизвестно, принимает ли Platega такие адреса. Если нет, магазин тоже нужно запускать на публичном адресе.
 6. **Тестовая оплата.** Неизвестно, есть ли на тестовом аккаунте симуляция оплаты или проходят реальные деньги.
 
-Уже подтверждено на живом API (29.09.2026): форматы `GET /balance/all` (у RUB нет `frozenBalance`), пустой страницы `GET /subscription` и тела ошибок 401/404. Реальные ответы лежат в фикстурах тестов: `balances-live.json`, `subscription-list-empty.json`, `error-401.json`, `error-404.json`.
+Уже подтверждено на живом API (29.09.2026):
+
+- `POST /v2/transaction/process`: ответ совпадает с документацией, но `expiresIn` равен 30 минутам, а `rate` — `0`;
+- `GET /transaction/{id}`: помимо документированных полей приходят `refundStatus`, `refundStatusMessage` и `createdAt` (добавлены в `PlategaTransaction`); у платежа без выбранного метода `paymentMethod` и `qr` равны `null`; `orderId` из запроса в `externalId` не возвращается;
+- `GET /transaction/{id}/cancel-supported` для неоплаченного платежа: `supported: false` без `blockReason`;
+- `GET /balance/all` (у RUB нет `frozenBalance`), пустая страница `GET /subscription`;
+- тела ошибок 400, 401 и 404.
+
+Реальные ответы лежат в фикстурах тестов с суффиксом `-live` и `error-*.json`.
 
 Эмулятор `Platega.FakeServer` реализует документацию в том же прочтении, поэтому зелёные интеграционные тесты не подтверждают эти пункты.

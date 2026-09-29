@@ -82,6 +82,49 @@ public sealed class PaymentsClientTests : IDisposable
     }
 
     [Fact]
+    public async Task CreatePayment_ReadsLiveV2Response()
+    {
+        _host.Handler.RespondWithFixture("create-v2-live.json");
+
+        CreatedPayment created = await _host.Client.Payments.CreatePaymentAsync(NewRequest(null), TestContext.Current.CancellationToken);
+
+        Assert.Equal(PaymentStatus.Pending, created.Status);
+        Assert.StartsWith("https://pay.platega.io/p/", created.PaymentUrl, StringComparison.Ordinal);
+        Assert.Equal(TimeSpan.FromMinutes(30), created.ExpiresIn);
+        Assert.Equal(0m, created.UsdtRate);
+    }
+
+    [Fact]
+    public async Task GetTransaction_ReadsLivePendingResponse()
+    {
+        _host.Handler.RespondWithFixture("transaction-pending-live.json");
+
+        PlategaTransaction transaction = await _host.Client.Payments.GetTransactionAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(PaymentStatus.Pending, transaction.Status);
+        Assert.Equal(new Money(100m, "RUB"), transaction.Amount);
+        Assert.Null(transaction.PaymentMethod);
+        Assert.Null(transaction.Qr);
+        Assert.Null(transaction.RefundStatus);
+        Assert.Equal(new DateTimeOffset(2026, 9, 29, 11, 39, 34, 489, TimeSpan.Zero).AddTicks(5950), transaction.CreatedAt);
+        Assert.Equal("00000000-0000-0000-0000-00000000b001", transaction.MerchantId);
+    }
+
+    [Fact]
+    public async Task ValidationErrorBody_ExposesRejectedParameter()
+    {
+        _host.Handler.Respond(HttpStatusCode.BadRequest, Fixture.Read("error-400-subscription.json"));
+
+        PlategaApiException exception = await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Payments.CreatePaymentAsync(NewRequest(null), TestContext.Current.CancellationToken));
+
+        Assert.Equal("Common:VAL_0001", exception.ErrorCode);
+        Assert.Equal(4001, exception.ErrorType);
+        PlategaErrorDetail detail = Assert.Single(exception.ErrorDetails);
+        Assert.Equal("paymentMethod", detail.Key);
+    }
+
+    [Fact]
     public async Task GetH2HPaymentData_ReturnsQr()
     {
         _host.Handler.RespondWithFixture("h2h.json");

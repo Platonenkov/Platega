@@ -146,15 +146,24 @@ public sealed class LiveApiTests : IDisposable
             "Set PLATEGA_LIVE_CREATE=1 to create a real subscription awaiting binding (it turns Failed after 30 minutes unless bound).");
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
 
-        CreatedSubscription created = await client.Subscriptions.CreateAsync(
-            new CreateSubscriptionRequest
-            {
-                Amount = 100,
-                Interval = SubscriptionInterval.Month,
-                IntervalCount = 1,
-                Description = "Platega.Client live test",
-            },
-            cancellationToken);
+        CreatedSubscription created;
+        try
+        {
+            created = await client.Subscriptions.CreateAsync(
+                new CreateSubscriptionRequest
+                {
+                    Amount = 100,
+                    Interval = SubscriptionInterval.Month,
+                    IntervalCount = 1,
+                    Description = "Platega.Client live test",
+                },
+                cancellationToken);
+        }
+        catch (PlategaApiException exception) when (exception.ErrorDetails.Any(detail => detail.Key == "paymentMethod"))
+        {
+            Assert.Skip($"SBP subscriptions are not enabled for this merchant: {exception.ErrorCode} {exception.ErrorMessage}");
+            return;
+        }
 
         PlategaSubscription single = await client.Subscriptions.GetAsync(created.SubscriptionId, cancellationToken);
         SubscriptionPage page = await client.Subscriptions.ListAsync(new SubscriptionListFilter { Size = 100 }, cancellationToken);

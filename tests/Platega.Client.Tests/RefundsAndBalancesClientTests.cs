@@ -28,6 +28,18 @@ public sealed class RefundsAndBalancesClientTests : IDisposable
     }
 
     [Fact]
+    public async Task GetCancelAvailability_ReadsLiveUnsupportedResponse()
+    {
+        _host.Handler.RespondWithFixture("cancel-supported-live.json");
+
+        CancelAvailability availability = await _host.Client.Refunds.GetCancelAvailabilityAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.False(availability.Supported);
+        Assert.Equal(0m, availability.TotalDeductUsdt);
+        Assert.Null(availability.BlockReason);
+    }
+
+    [Fact]
     public async Task CancelTransaction_PostsWithoutBody()
     {
         _host.Handler.RespondWithFixture("cancel.json");

@@ -120,6 +120,15 @@ public sealed record PlategaTransaction
     public string? ExternalId { get; init; }
 
     public string? Description { get; init; }
+
+    /// <summary>Refund state; not in the documentation, returned by the live API (<c>null</c> when there is no refund).</summary>
+    public string? RefundStatus { get; init; }
+
+    /// <summary>Refund state explanation; not in the documentation, returned by the live API.</summary>
+    public string? RefundStatusMessage { get; init; }
+
+    /// <summary>Creation time; not in the documentation, returned by the live API.</summary>
+    public DateTimeOffset? CreatedAt { get; init; }
 }
 
 /// <summary>Host-to-host payment data returned by <c>GET /h2h/{id}</c>.</summary>
