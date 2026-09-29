@@ -173,9 +173,14 @@ public static class ApiEndpoints
             .Select(item => int.TryParse(item?.ToString(), CultureInfo.InvariantCulture, out int method) ? method : -1)
             .ToHashSet();
 
+        HashSet<string> statuses = (body["statuses"] as JsonArray ?? [])
+            .Select(item => FakeStatuses.FromExportCode(item?.ToString()))
+            .ToHashSet(StringComparer.Ordinal);
+
         List<FakeTransaction> rows = store.Transactions()
             .Where(item => item.CreatedAt >= from && item.CreatedAt <= to)
             .Where(item => methods.Count == 0 || (item.Method is { } method && methods.Contains(method)))
+            .Where(item => statuses.Count == 0 || statuses.Contains(item.Status))
             .ToList();
 
         FakeExport export = format.ToLowerInvariant() switch

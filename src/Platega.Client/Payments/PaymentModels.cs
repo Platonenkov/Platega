@@ -156,10 +156,10 @@ public sealed record TransactionExportRequest
     public required DateTimeOffset To { get; init; }
 
     /// <summary>
-    /// Raw numeric status codes as the export endpoint expects them (e.g. <c>"6"</c>).
-    /// Their mapping to <see cref="PaymentStatus"/> is not documented; an empty list means all statuses.
+    /// Statuses to include; an empty list means all statuses. Sent as the numeric codes the export endpoint expects:
+    /// 1 Pending, 6 Canceled, 7 Confirmed, 9 Chargebacked.
     /// </summary>
-    public IReadOnlyList<string> StatusCodes { get; init; } = [];
+    public IReadOnlyList<PaymentStatus> Statuses { get; init; } = [];
 
     /// <summary>Payment methods to include; an empty list means all methods.</summary>
     public IReadOnlyList<PaymentMethod> PaymentMethods { get; init; } = [];

@@ -120,7 +120,7 @@ internal sealed class PlategaPaymentsClient(PlategaConnection connection) : IPla
 
         TransactionExportWireRequest wire = new TransactionExportWireRequest
         {
-            Statuses = request.StatusCodes,
+            Statuses = request.Statuses.Select(ToExportCode).ToArray(),
             PaymentMethods = request.PaymentMethods
                 .Select(method => ((int)method).ToString(CultureInfo.InvariantCulture))
                 .ToArray(),
@@ -146,6 +146,11 @@ internal sealed class PlategaPaymentsClient(PlategaConnection connection) : IPla
 
         return fileUri;
     }
+
+    private static string ToExportCode(PaymentStatus status) =>
+        PaymentStatusConverter.Instance.TryGetCode(status, out int code)
+            ? code.ToString(CultureInfo.InvariantCulture)
+            : throw new ArgumentException($"Status {status} cannot be used as an export filter.", nameof(status));
 
     /// <summary>A 200 answer without an id or a link is not a created payment.</summary>
     internal static void EnsureCreated(Guid id, string? url, string endpoint)

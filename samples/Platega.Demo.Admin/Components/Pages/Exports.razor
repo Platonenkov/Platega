@@ -29,9 +29,14 @@
                 </select>
             </div>
             <div class="col-sm-6">
-                <label class="form-label" for="statuses">Коды статусов</label>
-                <input id="statuses" class="form-control" @bind="_statusCodes" placeholder="например 6,7; пусто — все" />
-                <div class="form-text">Соответствие кодов статусам в документации не описано.</div>
+                <span class="form-label d-block">Статусы (пусто — все)</span>
+                @foreach (PaymentStatus status in ExportStatuses)
+                {
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="s-@status" checked="@_statuses.Contains(status)" @onchange="e => ToggleStatus(status, (bool)e.Value!)" />
+                        <label class="form-check-label" for="s-@status">@DemoFormat.Status(status).Text</label>
+                    </div>
+                }
             </div>
             <div class="col-12">
                 <span class="form-label d-block">Методы оплаты (пусто — все)</span>
@@ -61,14 +66,28 @@
 </div>
 
 @code {
+    private static readonly PaymentStatus[] ExportStatuses = [PaymentStatus.Pending, PaymentStatus.Confirmed, PaymentStatus.Canceled, PaymentStatus.Chargebacked];
+
     private readonly HashSet<PaymentMethod> _methods = [];
+    private readonly HashSet<PaymentStatus> _statuses = [];
     private DateTime _from = DateTime.Today.AddDays(-30);
     private DateTime _to = DateTime.Now.AddMinutes(1);
     private TransactionExportFormat _format = TransactionExportFormat.Csv;
-    private string _statusCodes = string.Empty;
     private Uri? _file;
     private string? _error;
     private bool _busy;
+
+    private void ToggleStatus(PaymentStatus status, bool selected)
+    {
+        if (selected)
+        {
+            _statuses.Add(status);
+        }
+        else
+        {
+            _statuses.Remove(status);
+        }
+    }
 
     private void Toggle(PaymentMethod method, bool selected)
     {
@@ -94,7 +113,7 @@
                 {
                     From = new DateTimeOffset(_from, TimeZoneInfo.Local.GetUtcOffset(_from)),
                     To = new DateTimeOffset(_to, TimeZoneInfo.Local.GetUtcOffset(_to)),
-                    StatusCodes = _statusCodes.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                    Statuses = _statuses.ToArray(),
                     PaymentMethods = _methods.ToArray(),
                     TimeZoneId = TimeZoneInfo.Local.Id,
                 },

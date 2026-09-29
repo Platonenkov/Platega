@@ -148,7 +148,7 @@ public sealed class PaymentsClientTests : IDisposable
         {
             From = new DateTimeOffset(2026, 5, 1, 3, 0, 0, TimeSpan.FromHours(3)),
             To = new DateTimeOffset(2026, 6, 16, 8, 50, 4, 820, TimeSpan.Zero),
-            StatusCodes = ["6", "7"],
+            Statuses = [PaymentStatus.Canceled, PaymentStatus.Confirmed],
             PaymentMethods = [PaymentMethod.SbpQr, PaymentMethod.Card],
         };
 
@@ -162,6 +162,56 @@ public sealed class PaymentsClientTests : IDisposable
         Assert.Equal(["6", "7"], body.RootElement.GetProperty("statuses").EnumerateArray().Select(item => item.GetString()!));
         Assert.Equal("UTC", body.RootElement.GetProperty("timeZoneId").GetString());
         Assert.Equal("https://files.platega.io/export/transactions.csv", file.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task ExportTransactions_MapsEveryStatusToSupportCode()
+    {
+        _host.Handler.RespondWithFixture("export.json");
+
+        await _host.Client.Payments.ExportTransactionsAsync(
+            new TransactionExportRequest
+            {
+                From = DateTimeOffset.UnixEpoch,
+                To = DateTimeOffset.UnixEpoch.AddDays(1),
+                Statuses = [PaymentStatus.Pending, PaymentStatus.Canceled, PaymentStatus.Confirmed, PaymentStatus.Chargebacked],
+            },
+            TransactionExportFormat.Json,
+            TestContext.Current.CancellationToken);
+
+        using JsonDocument body = JsonDocument.Parse(_host.Handler.LastRequest.Body);
+        Assert.Equal(["1", "6", "7", "9"], body.RootElement.GetProperty("statuses").EnumerateArray().Select(item => item.GetString()!));
+    }
+
+    [Fact]
+    public async Task ExportTransactions_RejectsUnknownStatus()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _host.Client.Payments.ExportTransactionsAsync(
+                new TransactionExportRequest
+                {
+                    From = DateTimeOffset.UnixEpoch,
+                    To = DateTimeOffset.UnixEpoch.AddDays(1),
+                    Statuses = [PaymentStatus.Unknown],
+                },
+                TransactionExportFormat.Csv,
+                TestContext.Current.CancellationToken));
+        Assert.Empty(_host.Handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("1", PaymentStatus.Pending)]
+    [InlineData("6", PaymentStatus.Canceled)]
+    [InlineData("7", PaymentStatus.Confirmed)]
+    [InlineData("9", PaymentStatus.Chargebacked)]
+    [InlineData("42", PaymentStatus.Unknown)]
+    public async Task NumericStatus_IsReadWithSupportCodes(string code, PaymentStatus expected)
+    {
+        _host.Handler.Respond(HttpStatusCode.OK, "{\"id\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"status\":" + code + "}");
+
+        PlategaTransaction transaction = await _host.Client.Payments.GetTransactionAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, transaction.Status);
     }
 
     [Fact]

@@ -2,6 +2,9 @@ using Platega.Subscriptions;
 
 namespace Platega.Serialization;
 
+/// <remarks>
+/// Numeric codes are used by transaction exports; confirmed by Platega support on 2026-09-29.
+/// </remarks>
 internal sealed class PaymentStatusConverter : TolerantEnumConverter<PaymentStatus>
 {
     public static readonly PaymentStatusConverter Instance = new PaymentStatusConverter();
@@ -15,7 +18,12 @@ internal sealed class PaymentStatusConverter : TolerantEnumConverter<PaymentStat
                 ("CANCELLED", PaymentStatus.Canceled),
                 ("CHARGEBACKED", PaymentStatus.Chargebacked),
             ],
-            [],
+            [
+                (1, PaymentStatus.Pending),
+                (6, PaymentStatus.Canceled),
+                (7, PaymentStatus.Confirmed),
+                (9, PaymentStatus.Chargebacked),
+            ],
             PaymentStatus.Unknown,
             writeAsCode: false)
     {

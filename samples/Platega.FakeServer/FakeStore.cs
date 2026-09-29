@@ -94,6 +94,16 @@ public static class FakeStatuses
         _ => -1,
     };
 
+    /// <summary>Export status codes as confirmed by Platega support.</summary>
+    public static string FromExportCode(string? code) => code switch
+    {
+        "1" => Pending,
+        "6" => Canceled,
+        "7" => Confirmed,
+        "9" => Chargebacked,
+        _ => string.Empty,
+    };
+
     public static string IntervalName(int interval) => interval switch
     {
         1 => "Day",
