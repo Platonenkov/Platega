@@ -13,7 +13,9 @@ RUN dotnet restore samples/${APP}/${APP}.csproj
 COPY src/ src/
 COPY samples/Platega.Demo.Data/ samples/Platega.Demo.Data/
 COPY samples/${APP}/ samples/${APP}/
-RUN dotnet publish samples/${APP}/${APP}.csproj -c Release -o /app --no-restore /p:UseAppHost=false
+# No --no-restore: the SDK adds Microsoft.AspNetCore.App.Internal.Assets (blazor.web.js) only when .razor files
+# are present, which is not the case during the csproj-only restore above.
+RUN dotnet publish samples/${APP}/${APP}.csproj -c Release -o /app /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 ARG APP
