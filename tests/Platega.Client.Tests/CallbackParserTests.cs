@@ -60,6 +60,19 @@ public sealed class CallbackParserTests
     }
 
     [Fact]
+    public void TryParse_LiveConfirmedCallbackCarriesPaidAmountAndMethod()
+    {
+        bool parsed = PlategaCallbackParser.TryParse(Fixture.ReadBytes("callback-confirmed-live.json"), out PlategaCallback? callback, out string? error);
+
+        Assert.True(parsed, error);
+        Assert.NotNull(callback);
+        Assert.Equal(PaymentStatus.Confirmed, callback.PaymentStatus);
+        Assert.Equal(PaymentMethod.SbpQr, callback.PaymentMethod);
+        Assert.Equal(5.4m, callback.Amount);
+        Assert.Equal("00000000-0000-0000-0000-00000000d001", callback.Payload);
+    }
+
+    [Fact]
     public void TryParse_SubscriptionChargeInPascalCase()
     {
         bool parsed = PlategaCallbackParser.TryParse(Fixture.ReadBytes("callback-subscription-charge.json"), out PlategaCallback? callback, out string? error);
