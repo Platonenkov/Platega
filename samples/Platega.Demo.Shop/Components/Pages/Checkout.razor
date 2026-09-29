@@ -15,7 +15,7 @@
 
 <div class="row g-4">
     <div class="col-lg-7">
-        <EditForm Model="_form" OnValidSubmit="PayAsync" FormName="checkout">
+        <EditForm Model="_form" OnValidSubmit="PayAsync">
             <div class="mb-3">
                 <label class="form-label" for="customer">Имя покупателя</label>
                 <InputText id="customer" class="form-control" @bind-Value="_form.CustomerName" placeholder="Иван Иванов" />
@@ -43,8 +43,10 @@
                 <div class="alert alert-danger" role="alert">@_error</div>
             }
 
-            <button type="submit" class="btn btn-primary btn-lg" disabled="@_busy">
-                @(_busy ? "Создаём платёж…" : $"Оплатить {DemoFormat.Money(_product.Price, _product.Currency)}")
+            @* Disabled until the circuit is connected: a click on the prerendered page would otherwise post the form
+               to the server as a separate component instance and create a second order. *@
+            <button type="submit" class="btn btn-primary btn-lg" disabled="@(_busy || !_interactive)">
+                @(!_interactive ? "Загрузка…" : _busy ? "Создаём платёж…" : $"Оплатить {DemoFormat.Money(_product.Price, _product.Currency)}")
             </button>
         </EditForm>
     </div>
@@ -71,17 +73,27 @@
     private Product? _product;
     private string? _error;
     private bool _busy;
+    private bool _interactive;
 
     [Parameter]
     public string ProductCode { get; set; } = string.Empty;
 
     protected override void OnParametersSet() => _product = DemoCatalog.FindProduct(ProductCode);
 
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _interactive = true;
+            StateHasChanged();
+        }
+    }
+
     private static string KeyOf(PaymentMethod? method) => method is { } value ? ((int)value).ToString(System.Globalization.CultureInfo.InvariantCulture) : AnyMethodKey;
 
     private async Task PayAsync()
     {
-        if (_product is null || _busy)
+        if (_product is null || _busy || !_interactive)
         {
             return;
         }
