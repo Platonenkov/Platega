@@ -147,6 +147,37 @@ public sealed class PaymentsClientTests : IDisposable
     }
 
     [Fact]
+    public async Task PlategaErrorBody_IsParsedIntoFields()
+    {
+        _host.Handler.Respond(HttpStatusCode.Unauthorized, Fixture.Read("error-401.json"));
+
+        PlategaApiException exception = await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Balances.GetBalancesAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, exception.StatusCode);
+        Assert.Equal("Auth:SIGN_1001", exception.ErrorCode);
+        Assert.Equal(4002, exception.ErrorType);
+        Assert.Equal("Merchant secret key is not correct.", exception.ErrorMessage);
+        Assert.Equal("00000000000000000000000000000000", exception.TraceId);
+    }
+
+    [Theory]
+    [InlineData("<html>bad gateway</html>")]
+    [InlineData("[1,2]")]
+    [InlineData("{\"code\":42,\"type\":\"x\"}")]
+    public async Task NonStandardErrorBody_LeavesFieldsEmpty(string body)
+    {
+        _host.Handler.Respond(HttpStatusCode.BadGateway, body);
+
+        PlategaApiException exception = await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Balances.GetBalancesAsync(TestContext.Current.CancellationToken));
+
+        Assert.Null(exception.ErrorCode);
+        Assert.Null(exception.ErrorType);
+        Assert.Equal(body, exception.ResponseBody);
+    }
+
+    [Fact]
     public async Task MalformedResponse_IsWrappedInApiException()
     {
         _host.Handler.Respond(HttpStatusCode.OK, "<html>gateway error</html>");
