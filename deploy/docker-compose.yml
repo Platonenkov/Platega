@@ -1,5 +1,9 @@
 # Test server deployment: Caddy terminates TLS (Let's Encrypt) and proxies to the two demo apps.
 # Usage: cp .env.example .env && edit .env && docker compose up -d --build
+# On a small server, build locally and ship the images instead:
+#   docker build -f deploy/Dockerfile --build-arg APP=Platega.Demo.Shop -t platega-demo-shop:latest . (same for Admin)
+#   docker save platega-demo-shop platega-demo-admin | ssh <host> docker load
+#   then on the server: docker compose up -d
 name: platega-demo
 
 services:
@@ -9,6 +13,7 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         APP: Platega.Demo.Shop
+    image: platega-demo-shop:latest
     restart: unless-stopped
     environment:
       Platega__MerchantId: ${PLATEGA_MERCHANT_ID:?set PLATEGA_MERCHANT_ID}
@@ -24,6 +29,7 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         APP: Platega.Demo.Admin
+    image: platega-demo-admin:latest
     restart: unless-stopped
     environment:
       Platega__MerchantId: ${PLATEGA_MERCHANT_ID:?set PLATEGA_MERCHANT_ID}
