@@ -50,7 +50,6 @@ services:
     environment:
       SHOP_DOMAIN: ${SHOP_DOMAIN:?set SHOP_DOMAIN}
       ADMIN_DOMAIN: ${ADMIN_DOMAIN:?set ADMIN_DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

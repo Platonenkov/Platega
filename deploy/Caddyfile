@@ -1,6 +1,4 @@
-{
-	email {$ACME_EMAIL}
-}
+# Optional: add a global block with `email you@example.com` to receive certificate expiry notices.
 
 {$SHOP_DOMAIN} {
 	encode zstd gzip
