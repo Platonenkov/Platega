@@ -34,7 +34,8 @@
             }
             else if (_availability.Supported)
             {
-                <p class="mb-2">Отмена доступна. С баланса будет списано <b>@_availability.TotalDeductUsdt USDT</b>@(_availability.PenaltyUsdt is { } penalty ? $", включая штраф {penalty} USDT" : string.Empty).</p>
+                <p class="mb-2">Отмена доступна. С баланса будет списано <b>@DemoFormat.Usdt(_availability.TotalDeductUsdt)</b>@(_availability.PenaltyUsdt is { } penalty ? $", включая штраф {DemoFormat.Usdt(penalty)}" : string.Empty).</p>
+                <p class="small text-muted mb-2">Возврат асинхронный: Platega принимает его сразу, а статус «Возврат» и callback CHARGEBACKED приходят примерно через минуту.</p>
                 <button class="btn btn-danger" disabled="@_busy" @onclick="RefundAsync">Подтвердить возврат</button>
                 <button class="btn btn-link" @onclick="CloseRefund">Отмена</button>
             }
@@ -59,8 +60,8 @@
                 <dt class="col-sm-3">Статус</dt><dd class="col-sm-9">@_details.Status</dd>
                 <dt class="col-sm-3">Сумма</dt><dd class="col-sm-9">@_details.Amount</dd>
                 <dt class="col-sm-3">Метод</dt><dd class="col-sm-9">@_details.PaymentMethod</dd>
-                <dt class="col-sm-3">Комиссия</dt><dd class="col-sm-9">@_details.Commission (@_details.CommissionUsdt USDT)</dd>
-                <dt class="col-sm-3">В USDT</dt><dd class="col-sm-9">@_details.AmountUsdt</dd>
+                <dt class="col-sm-3">Комиссия</dt><dd class="col-sm-9">@_details.Commission (@DemoFormat.Usdt(_details.CommissionUsdt))</dd>
+                <dt class="col-sm-3">В USDT</dt><dd class="col-sm-9">@DemoFormat.Usdt(_details.AmountUsdt)</dd>
                 <dt class="col-sm-3">Payload</dt><dd class="col-sm-9">@_details.Payload</dd>
                 <dt class="col-sm-3">Описание</dt><dd class="col-sm-9">@_details.Description</dd>
             </dl>

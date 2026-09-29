@@ -71,7 +71,7 @@
         {
             <div class="alert alert-success mt-3">
                 Вывод создан: @_result.WithdrawalRecordId, статус @_result.Status, карта @_result.CardMasked,
-                списано @_result.AmountUsdtDebited USDT.
+                списано @DemoFormat.Usdt(_result.AmountUsdtDebited).
             </div>
         }
 

@@ -42,6 +42,13 @@
                             }
                         </tbody>
                     </table>
+                    @if (_balances.Any(balance => balance.Amount < 0))
+                    {
+                        <p class="small text-muted mt-2 mb-0">
+                            Отрицательный баланс — это долг за возвраты: Platega списывает их с USDT-баланса по текущему курсу,
+                            даже если платёж был в рублях. Балансы показаны так, как их возвращает API.
+                        </p>
+                    }
                 }
             </div>
         </div>

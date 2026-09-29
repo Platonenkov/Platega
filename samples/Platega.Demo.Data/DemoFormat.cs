@@ -8,8 +8,16 @@ public static class DemoFormat
 {
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
 
-    public static string Money(decimal amount, string currency) =>
-        currency == "RUB" ? $"{amount.ToString("N2", Russian)} ₽" : $"{amount.ToString("N2", Russian)} {currency}";
+    public static string Money(decimal amount, string currency) => currency switch
+    {
+        "RUB" => $"{amount.ToString("N2", Russian)} ₽",
+        "USDT" => Usdt(amount),
+        _ => $"{amount.ToString("N2", Russian)} {currency}",
+    };
+
+    /// <summary>USDT amounts arrive with 16 decimals; up to 8 significant decimals are shown.</summary>
+    public static string Usdt(decimal? amount) =>
+        amount is { } value ? $"{value.ToString("#,0.########", Russian)} USDT" : "—";
 
     public static string Date(DateTimeOffset? value) =>
         value is { } date ? date.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss", Russian) : "—";
