@@ -6,7 +6,8 @@ namespace Platega;
 /// <summary>
 /// Raised when the Platega API returns a non-success status code or a response that cannot be read.
 /// Platega error bodies look like <c>{"code":"Auth:SIGN_1001","type":4002,"message":"...","data":[],"traceId":"..."}</c>;
-/// their fields are exposed as <see cref="ErrorCode"/>, <see cref="ErrorType"/>, <see cref="ErrorMessage"/> and <see cref="TraceId"/>.
+/// their fields are exposed as <see cref="ErrorCode"/>, <see cref="ErrorType"/>, <see cref="ErrorMessage"/>,
+/// <see cref="ErrorDetails"/> and <see cref="TraceId"/>.
 /// </summary>
 public sealed class PlategaApiException : Exception
 {
@@ -18,7 +19,7 @@ public sealed class PlategaApiException : Exception
         StatusCode = statusCode;
         Endpoint = endpoint;
         ResponseBody = Truncate(responseBody);
-        (ErrorCode, ErrorType, ErrorMessage, TraceId) = ParseErrorBody(responseBody);
+        (ErrorCode, ErrorType, ErrorMessage, TraceId, ErrorDetails) = ParseErrorBody(responseBody);
     }
 
     /// <summary>HTTP status code returned by the API.</summary>
@@ -42,6 +43,9 @@ public sealed class PlategaApiException : Exception
     /// <summary>Request trace id; quote it when contacting Platega support.</summary>
     public string? TraceId { get; }
 
+    /// <summary>Per-field details from the <c>data</c> array, e.g. <c>Id: Transaction ... not exist</c>.</summary>
+    public IReadOnlyList<PlategaErrorDetail> ErrorDetails { get; }
+
     private static string BuildMessage(HttpStatusCode statusCode, string endpoint, string? responseBody)
     {
         string reason = statusCode switch
@@ -58,11 +62,11 @@ public sealed class PlategaApiException : Exception
         return $"Platega API {endpoint} returned {(int)statusCode} ({reason}){details}";
     }
 
-    private static (string? Code, int? Type, string? Message, string? TraceId) ParseErrorBody(string? responseBody)
+    private static (string? Code, int? Type, string? Message, string? TraceId, IReadOnlyList<PlategaErrorDetail> Details) ParseErrorBody(string? responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody) || responseBody.TrimStart()[0] != '{')
         {
-            return default;
+            return (null, null, null, null, []);
         }
 
         try
@@ -73,12 +77,32 @@ public sealed class PlategaApiException : Exception
                 ReadString(root, "code"),
                 root.TryGetProperty("type", out JsonElement type) && type.ValueKind == JsonValueKind.Number && type.TryGetInt32(out int value) ? value : null,
                 ReadString(root, "message"),
-                ReadString(root, "traceId"));
+                ReadString(root, "traceId"),
+                ReadDetails(root));
         }
         catch (JsonException)
         {
-            return default;
+            return (null, null, null, null, []);
         }
+    }
+
+    private static List<PlategaErrorDetail> ReadDetails(JsonElement root)
+    {
+        List<PlategaErrorDetail> details = [];
+        if (!root.TryGetProperty("data", out JsonElement data) || data.ValueKind != JsonValueKind.Array)
+        {
+            return details;
+        }
+
+        foreach (JsonElement item in data.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object)
+            {
+                details.Add(new PlategaErrorDetail(ReadString(item, "key"), ReadString(item, "message")));
+            }
+        }
+
+        return details;
     }
 
     private static string? ReadString(JsonElement root, string name) =>

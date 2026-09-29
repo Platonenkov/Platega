@@ -109,6 +109,18 @@ public sealed class SubscriptionsClientTests : IDisposable
     }
 
     [Fact]
+    public async Task List_ReadsLiveEmptyPage()
+    {
+        _host.Handler.RespondWithFixture("subscription-list-empty.json");
+
+        SubscriptionPage page = await _host.Client.Subscriptions.ListAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.Total);
+        Assert.Equal(50, page.Size);
+    }
+
+    [Fact]
     public async Task Cancel_PostsToCancelEndpoint()
     {
         _host.Handler.RespondWithFixture("subscription-cancel.json");

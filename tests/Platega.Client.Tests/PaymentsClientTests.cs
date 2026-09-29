@@ -161,6 +161,21 @@ public sealed class PaymentsClientTests : IDisposable
         Assert.Equal("00000000000000000000000000000000", exception.TraceId);
     }
 
+    [Fact]
+    public async Task NotFoundErrorBody_ExposesFieldDetails()
+    {
+        _host.Handler.Respond(HttpStatusCode.NotFound, Fixture.Read("error-404.json"));
+
+        PlategaApiException exception = await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Payments.GetTransactionAsync(Guid.NewGuid(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("Common:NF_0001", exception.ErrorCode);
+        Assert.Equal(4004, exception.ErrorType);
+        PlategaErrorDetail detail = Assert.Single(exception.ErrorDetails);
+        Assert.Equal("Id", detail.Key);
+        Assert.EndsWith("not exist", detail.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("<html>bad gateway</html>")]
     [InlineData("[1,2]")]

@@ -137,6 +137,37 @@ public sealed class LiveApiTests : IDisposable
         Assert.False(availability.Supported);
     }
 
+    [Fact]
+    public async Task Subscription_NumericListStatusMatchesNamedStatus()
+    {
+        IPlategaClient client = Client;
+        Assert.SkipUnless(
+            Environment.GetEnvironmentVariable("PLATEGA_LIVE_CREATE") == "1",
+            "Set PLATEGA_LIVE_CREATE=1 to create a real subscription awaiting binding (it turns Failed after 30 minutes unless bound).");
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        CreatedSubscription created = await client.Subscriptions.CreateAsync(
+            new CreateSubscriptionRequest
+            {
+                Amount = 100,
+                Interval = SubscriptionInterval.Month,
+                IntervalCount = 1,
+                Description = "Platega.Client live test",
+            },
+            cancellationToken);
+
+        PlategaSubscription single = await client.Subscriptions.GetAsync(created.SubscriptionId, cancellationToken);
+        SubscriptionPage page = await client.Subscriptions.ListAsync(new SubscriptionListFilter { Size = 100 }, cancellationToken);
+        PlategaSubscription listed = Assert.Single(page.Items, item => item.Id == created.SubscriptionId);
+
+        Assert.NotEqual(SubscriptionStatus.Unknown, single.Status);
+        Assert.Equal(single.Status, listed.Status);
+        Assert.Equal(SubscriptionInterval.Month, single.IntervalUnit);
+        Assert.Equal(SubscriptionInterval.Month, listed.IntervalUnit);
+
+        await client.Subscriptions.CancelAsync(created.SubscriptionId, cancellationToken);
+    }
+
     /// <summary>
     /// Writes each response (never the request headers, which carry the secret) to the test output and appends it
     /// to <c>live-responses.log</c> next to the test binaries, since passing tests do not print their output.

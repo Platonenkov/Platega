@@ -45,6 +45,17 @@ public sealed class RefundsAndBalancesClientTests : IDisposable
     }
 
     [Fact]
+    public async Task GetBalances_ReadsLiveResponse()
+    {
+        _host.Handler.RespondWithFixture("balances-live.json");
+
+        IReadOnlyList<PlategaBalance> balances = await _host.Client.Balances.GetBalancesAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["RUB", "USDT"], balances.Select(balance => balance.Currency));
+        Assert.All(balances, balance => Assert.Equal(0m, balance.Amount));
+    }
+
+    [Fact]
     public async Task GetBalances_DefaultsMissingFrozenBalanceToZero()
     {
         _host.Handler.RespondWithFixture("balances.json");
