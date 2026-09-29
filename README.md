@@ -43,7 +43,7 @@
    dotnet run --project samples/Platega.Demo.Shop --launch-profile http
    ```
 
-4. Откройте `http://localhost:5101`, выберите товар и нажмите «Оплатить». На странице эмулятора нажмите «Оплатить» или «Отклонить». Магазин вернёт вас на страницу заказа, и статус обновится.
+4. Откройте `http://localhost:5101`, выберите товар и нажмите «Оплатить». Страница оплаты откроется в новой вкладке, а магазин покажет страницу заказа. На странице эмулятора нажмите «Оплатить» или «Отклонить» — статус заказа обновится сам.
 
 5. Откройте админку `http://localhost:5201`. Пароль для окружения `Development` — `admin`.
 
@@ -81,7 +81,7 @@
 
 ## Развёртывание на тестовом сервере
 
-Процедура проверена частично: образы собираются, контейнеры запускаются, страницы и endpoint callback отвечают локально. Выпуск сертификата Let's Encrypt через Caddy на реальном домене ещё не проверялся. Если Let's Encrypt недоступен, Caddy автоматически переключается на ZeroSSL.
+Процедура проверена на тестовом сервере (Ubuntu 24.04, 1 vCPU, 1 ГБ RAM): Caddy выпустил сертификаты Let's Encrypt, Platega приняла Callback URL и доставила callback-и `CONFIRMED`, `CANCELED` и `CHARGEBACKED`. Если Let's Encrypt недоступен, Caddy автоматически переключается на ZeroSSL.
 
 Требования:
 
@@ -104,14 +104,19 @@
    docker compose up -d --build
    ```
 
-   Caddy сам получит сертификаты Let's Encrypt для `SHOP_DOMAIN` и `ADMIN_DOMAIN`.
+   Caddy сам получит сертификаты Let's Encrypt для `SHOP_DOMAIN` и `ADMIN_DOMAIN`. На сервере с 1 ГБ памяти сборку .NET лучше не запускать: соберите образы у себя и перенесите их командой `docker save … | ssh <host> docker load`, как описано в комментарии в начале `docker-compose.yml`, затем выполните на сервере `docker compose up -d`.
 
-4. В личном кабинете Platega укажите Callback URL `https://<ADMIN_DOMAIN>/platega/callback`.
-5. Проверьте, что endpoint отвечает. Запрос без заголовков должен вернуть `401`:
+4. Проверьте, что endpoint отвечает. Callback без заголовков должен вернуть `401`:
 
    ```bash
-   curl -i -X POST https://<ADMIN_DOMAIN>/platega/callback -H "Content-Type: application/json" -d "{}"
+   curl -i -X POST https://<ADMIN_DOMAIN>/platega/callback -H "Content-Type: application/json" -d "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"status\":\"CONFIRMED\"}"
    ```
+
+   Запрос с телом `{}` вернёт `200`: так Platega проверяет адрес при сохранении, и endpoint отвечает на проверку без обработки.
+
+5. В личном кабинете Platega укажите Callback URL `https://<ADMIN_DOMAIN>/platega/callback` и сохраните. Адрес запоминается в транзакции при её создании, поэтому callback-и придут только по транзакциям, созданным после сохранения.
+
+После правки `.env` выполните `docker compose up -d`: контейнеры пересоздаются и получают новые значения, сами они `.env` не перечитывают.
 
 База SQLite и ключи Data Protection хранятся в томе `demo-data`.
 
