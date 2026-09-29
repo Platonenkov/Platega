@@ -42,12 +42,28 @@ public static class DemoDataServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>Creates the schema if needed and switches SQLite to WAL, since two processes share the file.</summary>
+    /// <summary>
+    /// Creates the schema if needed and switches SQLite to WAL, since two processes share the file.
+    /// Both apps may start at once: the loser of the creation race gets "already exists" and retries,
+    /// and the retry sees the finished schema and creates nothing.
+    /// </summary>
     public static async Task InitializeDemoDatabaseAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
+        const int maxAttempts = 5;
         IDbContextFactory<DemoDbContext> factory = services.GetRequiredService<IDbContextFactory<DemoDbContext>>();
-        await using DemoDbContext db = await factory.CreateDbContextAsync(cancellationToken);
-        await db.Database.EnsureCreatedAsync(cancellationToken);
-        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", cancellationToken);
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await using DemoDbContext db = await factory.CreateDbContextAsync(cancellationToken);
+                await db.Database.EnsureCreatedAsync(cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", cancellationToken);
+                return;
+            }
+            catch (SqliteException exception) when (attempt < maxAttempts && exception.SqliteErrorCode is 1 or 5)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+        }
     }
 }
