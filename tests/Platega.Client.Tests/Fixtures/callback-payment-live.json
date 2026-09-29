@@ -1,0 +1,8 @@
+{
+  "id": "00000000-0000-0000-0000-00000000a001",
+  "amount": 100.0000000000000000,
+  "currency": "RUB",
+  "status": "CANCELED",
+  "paymentMethod": null,
+  "payload": "live-test"
+}
