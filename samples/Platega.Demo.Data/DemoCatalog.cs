@@ -13,6 +13,7 @@ public static class DemoCatalog
 {
     public static IReadOnlyList<Product> Products { get; } =
     [
+        new Product("test", "Тестовый платёж", "Минимальная покупка для проверки оплаты и возврата", 50m),
         new Product("coffee", "Кофе в зёрнах, 1 кг", "Эфиопия Иргачефф, свежая обжарка", 1290m),
         new Product("course", "Онлайн-курс по C#", "Асинхронность, производительность, тестирование", 4990m),
         new Product("ebook", "Электронная книга", "PDF и EPUB, доставка на email", 390m),
