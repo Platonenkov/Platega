@@ -73,7 +73,18 @@ public interface IPlategaCallbackHandler
     Task HandleAsync(PlategaCallback callback, CancellationToken cancellationToken);
 
     Task OnRejectedAsync(PlategaCallbackRejection rejection, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called for a reachability probe: Platega checks the callback URL with <c>POST {}</c> when it is saved in the cabinet.
+    /// The endpoint answers 200 without invoking <see cref="HandleAsync"/>.
+    /// </summary>
+    Task OnProbeAsync(PlategaCallbackProbe probe, CancellationToken cancellationToken) => Task.CompletedTask;
 }
+
+/// <summary>A callback URL reachability probe (empty body or <c>{}</c>).</summary>
+/// <param name="Authenticated">True when the probe carried valid <c>X-MerchantId</c>/<c>X-Secret</c> headers.</param>
+/// <param name="RawBody">Original request body.</param>
+public sealed record PlategaCallbackProbe(bool Authenticated, string RawBody);
 
 internal sealed record CallbackWire
 {

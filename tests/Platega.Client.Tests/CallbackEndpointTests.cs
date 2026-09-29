@@ -65,6 +65,21 @@ public sealed class CallbackEndpointTests : IAsyncLifetime
         Assert.Equal(PlategaCallbackRejectionReason.Unauthorized, Assert.Single(_handler.Rejected).Reason);
     }
 
+    [Theory]
+    [InlineData("{}", "forged")]
+    [InlineData(" { } ", PlategaTestHost.Secret)]
+    [InlineData("", "forged")]
+    public async Task ReachabilityProbe_IsAcknowledgedWithoutHandling(string body, string secret)
+    {
+        using HttpResponseMessage response = await PostAsync(body, secret);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(_handler.Handled);
+        Assert.Empty(_handler.Rejected);
+        PlategaCallbackProbe probe = Assert.Single(_handler.Probes);
+        Assert.Equal(secret == PlategaTestHost.Secret, probe.Authenticated);
+    }
+
     [Fact]
     public async Task InvalidBody_IsRejectedWithBadRequest()
     {
@@ -112,7 +127,15 @@ public sealed class CallbackEndpointTests : IAsyncLifetime
 
         public List<PlategaCallbackRejection> Rejected { get; } = [];
 
+        public List<PlategaCallbackProbe> Probes { get; } = [];
+
         public bool FailNext { get; set; }
+
+        public Task OnProbeAsync(PlategaCallbackProbe probe, CancellationToken cancellationToken)
+        {
+            Probes.Add(probe);
+            return Task.CompletedTask;
+        }
 
         public Task HandleAsync(PlategaCallback callback, CancellationToken cancellationToken)
         {

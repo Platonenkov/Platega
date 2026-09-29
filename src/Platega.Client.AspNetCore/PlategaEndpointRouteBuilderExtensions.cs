@@ -15,7 +15,8 @@ public static class PlategaEndpointRouteBuilderExtensions
     public const int MaxBodyBytes = 64 * 1024;
 
     /// <summary>
-    /// Maps <c>POST {pattern}</c> for Platega callbacks. Responses: 401 when the <c>X-MerchantId</c>/<c>X-Secret</c>
+    /// Maps <c>POST {pattern}</c> for Platega callbacks. Responses: 200 for a reachability probe (empty body or <c>{}</c>,
+    /// sent by Platega when the URL is saved in the cabinet), 401 when the <c>X-MerchantId</c>/<c>X-Secret</c>
     /// headers do not match, 400 for an invalid body, 200 after <see cref="IPlategaCallbackHandler"/> succeeds.
     /// A handler exception yields 500, so Platega retries the delivery.
     /// Requires <c>AddPlatega(...)</c> and a registered <see cref="IPlategaCallbackHandler"/>.
@@ -62,11 +63,20 @@ public static class PlategaEndpointRouteBuilderExtensions
         string? merchantId = context.Request.Headers[PlategaCallbackParser.MerchantIdHeader];
         string? secret = context.Request.Headers[PlategaCallbackParser.SecretHeader];
 
-        if (!parser.IsAuthentic(merchantId, secret))
+        bool authentic = parser.IsAuthentic(merchantId, secret);
+        if (PlategaCallbackParser.IsProbe(body))
         {
-            logger.LogWarning("Rejected Platega callback from {RemoteIp}: invalid credentials headers", context.Connection.RemoteIpAddress);
+            logger.LogInformation("Platega callback URL probe from {RemoteIp}, authenticated: {Authenticated}", context.Connection.RemoteIpAddress, authentic);
+            await handler.OnProbeAsync(new PlategaCallbackProbe(authentic, rawBody), cancellationToken).ConfigureAwait(false);
+            return Results.Ok();
+        }
+
+        if (!authentic)
+        {
+            string headers = PlategaCallbackParser.DescribeHeaders(merchantId, secret);
+            logger.LogWarning("Rejected Platega callback from {RemoteIp}: invalid credentials ({Headers})", context.Connection.RemoteIpAddress, headers);
             await handler
-                .OnRejectedAsync(new PlategaCallbackRejection(PlategaCallbackRejectionReason.Unauthorized, rawBody, "Invalid X-MerchantId or X-Secret."), cancellationToken)
+                .OnRejectedAsync(new PlategaCallbackRejection(PlategaCallbackRejectionReason.Unauthorized, rawBody, $"Invalid X-MerchantId or X-Secret ({headers})."), cancellationToken)
                 .ConfigureAwait(false);
             return Results.Unauthorized();
         }

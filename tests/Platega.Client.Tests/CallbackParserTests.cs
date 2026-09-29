@@ -103,6 +103,26 @@ public sealed class CallbackParserTests
     }
 
     [Theory]
+    [InlineData("", true)]
+    [InlineData("  {}  ", true)]
+    [InlineData("{ }", true)]
+    [InlineData("{\"id\":\"1\"}", false)]
+    [InlineData("[]", false)]
+    [InlineData("{} {}", false)]
+    [InlineData("not json", false)]
+    public void IsProbe_RecognizesEmptyBodies(string body, bool expected) =>
+        Assert.Equal(expected, PlategaCallbackParser.IsProbe(System.Text.Encoding.UTF8.GetBytes(body)));
+
+    [Fact]
+    public void DescribeHeaders_NeverRevealsValues()
+    {
+        string description = PlategaCallbackParser.DescribeHeaders("some-merchant", "super-secret");
+
+        Assert.Equal("X-MerchantId present, X-Secret present", description);
+        Assert.Equal("X-MerchantId missing, X-Secret missing", PlategaCallbackParser.DescribeHeaders(null, ""));
+    }
+
+    [Theory]
     [InlineData("not json")]
     [InlineData("{}")]
     [InlineData("{\"id\":\"42\",\"status\":\"CONFIRMED\"}")]

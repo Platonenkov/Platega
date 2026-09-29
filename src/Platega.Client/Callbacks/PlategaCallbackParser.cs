@@ -42,6 +42,37 @@ public sealed class PlategaCallbackParser(IOptionsMonitor<PlategaOptions> option
         return merchantMatches & secretMatches;
     }
 
+    /// <summary>
+    /// True for a reachability probe: an empty body or an empty JSON object. Such a request carries no event,
+    /// so answering it with 200 is safe even without authentication.
+    /// </summary>
+    public static bool IsProbe(ReadOnlySpan<byte> body)
+    {
+        ReadOnlySpan<byte> trimmed = body.Trim(" \t\r\n"u8);
+        if (trimmed.IsEmpty)
+        {
+            return true;
+        }
+
+        try
+        {
+            Utf8JsonReader reader = new Utf8JsonReader(trimmed);
+            return reader.Read()
+                && reader.TokenType == JsonTokenType.StartObject
+                && reader.Read()
+                && reader.TokenType == JsonTokenType.EndObject
+                && !reader.Read();
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Describes which authentication headers are missing, without revealing their values.</summary>
+    public static string DescribeHeaders(string? merchantIdHeader, string? secretHeader) =>
+        $"X-MerchantId {(string.IsNullOrEmpty(merchantIdHeader) ? "missing" : "present")}, X-Secret {(string.IsNullOrEmpty(secretHeader) ? "missing" : "present")}";
+
     /// <summary>Parses a callback body. Returns false with an error description when the body is not a valid callback.</summary>
     public static bool TryParse(ReadOnlySpan<byte> body, [NotNullWhen(true)] out PlategaCallback? callback, [NotNullWhen(false)] out string? error)
     {

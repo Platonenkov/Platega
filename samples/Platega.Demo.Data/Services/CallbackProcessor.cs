@@ -67,6 +67,18 @@ public sealed class CallbackProcessor(
             },
             cancellationToken);
 
+    public Task OnProbeAsync(PlategaCallbackProbe probe, CancellationToken cancellationToken) =>
+        LogAsync(
+            new CallbackLogEntry
+            {
+                ReceivedAt = timeProvider.GetUtcNow(),
+                Accepted = true,
+                Kind = "Probe",
+                Status = probe.Authenticated ? "authenticated" : "anonymous",
+                RawBody = probe.RawBody,
+            },
+            cancellationToken);
+
     public async Task<IReadOnlyList<CallbackLogEntry>> RecentAsync(int take, CancellationToken cancellationToken)
     {
         await using DemoDbContext db = await dbFactory.CreateDbContextAsync(cancellationToken);

@@ -137,15 +137,26 @@ public sealed class LiveApiTests : IDisposable
         Assert.False(availability.Supported);
     }
 
-    /// <summary>Writes each response (never the request headers, which carry the secret) to the test output.</summary>
+    /// <summary>
+    /// Writes each response (never the request headers, which carry the secret) to the test output and appends it
+    /// to <c>live-responses.log</c> next to the test binaries, since passing tests do not print their output.
+    /// </summary>
     private sealed class ResponseLoggingHandler : DelegatingHandler
     {
+        private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "live-responses.log");
+        private static readonly Lock LogSync = new Lock();
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             HttpResponseMessage response = await base.SendAsync(request, cancellationToken);
             string body = await response.Content.ReadAsStringAsync(cancellationToken);
-            TestContext.Current.TestOutputHelper?.WriteLine(
-                $"{request.Method} {request.RequestUri?.PathAndQuery} -> {(int)response.StatusCode} {response.Content.Headers.ContentType}\n{body}\n");
+            string entry = $"{DateTimeOffset.UtcNow:O} {request.Method} {request.RequestUri?.PathAndQuery} -> {(int)response.StatusCode} {response.Content.Headers.ContentType}\n{body}\n";
+            TestContext.Current.TestOutputHelper?.WriteLine(entry);
+            lock (LogSync)
+            {
+                File.AppendAllText(LogPath, entry + "\n");
+            }
+
             return response;
         }
     }
