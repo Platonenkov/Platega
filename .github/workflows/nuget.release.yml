@@ -5,7 +5,7 @@ name: NuGet Release
 # so a merge without a version bump publishes nothing new.
 # Authentication to nuget.org uses Trusted Publishing (GitHub OIDC): no long-lived API key is stored.
 # One-time setup: a Trusted Publishing policy on nuget.org for this repository and workflow file
-# release.yml, and the repository secret NUGET_USER set to the nuget.org profile name.
+# nuget.release.yml, and the repository secret NUGET_USER set to the nuget.org profile name.
 
 on:
   push:
