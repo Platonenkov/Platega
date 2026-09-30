@@ -308,6 +308,22 @@ public sealed class PaymentsClientTests : IDisposable
     }
 
     [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("data:text/html,<script>alert(1)</script>")]
+    [InlineData("/relative/pay")]
+    [InlineData("ftp://pay.example.com/p/1")]
+    public async Task CreatePayment_RejectsNonHttpPaymentLink(string url)
+    {
+        _host.Handler.Respond(HttpStatusCode.OK, JsonSerializer.Serialize(new { transactionId = "3fa85f64-5717-4562-b3fc-2c963f66afa6", status = "PENDING", url }));
+        _host.Handler.Respond(HttpStatusCode.OK, JsonSerializer.Serialize(new { transactionId = "3fa85f64-5717-4562-b3fc-2c963f66afa6", status = "PENDING", redirect = url }));
+
+        await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Payments.CreatePaymentAsync(NewRequest(null), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Payments.CreatePaymentAsync(NewRequest(PaymentMethod.SbpQr), TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
     [InlineData("{}")]
     [InlineData("{\"transactionId\":\"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\"status\":\"PENDING\"}")]
     public async Task CreatePayment_RejectsSuccessWithoutIdOrLink(string body)

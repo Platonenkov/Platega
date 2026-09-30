@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -27,8 +29,16 @@ public sealed class CallbackEndpointTests : IAsyncLifetime
         });
         builder.Services.AddSingleton<IPlategaCallbackHandler>(_handler);
 
+        // Host apps often require authentication everywhere by default; Platega cannot authenticate,
+        // so the callback endpoint must stay reachable under such a fallback policy.
+        builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie();
+        builder.Services.AddAuthorization(options =>
+            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+
         _app = builder.Build();
         _app.UseStatusCodePagesWithReExecute("/not-found");
+        _app.UseAuthentication();
+        _app.UseAuthorization();
         _app.MapGet("/not-found", () => "not found page");
         _app.MapPlategaCallback();
         await _app.StartAsync(TestContext.Current.CancellationToken);

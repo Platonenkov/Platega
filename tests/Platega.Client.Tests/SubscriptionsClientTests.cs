@@ -38,6 +38,17 @@ public sealed class SubscriptionsClientTests : IDisposable
         Assert.StartsWith("https://pay.platega.io/subscription/", created.RedirectUrl, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Create_RejectsNonHttpBindingLink()
+    {
+        _host.Handler.Respond(System.Net.HttpStatusCode.OK, "{\"transactionId\":\"11111111-1111-1111-1111-111111111111\",\"redirect\":\"javascript:alert(1)\",\"status\":\"PENDING\"}");
+
+        await Assert.ThrowsAsync<PlategaApiException>(
+            () => _host.Client.Subscriptions.CreateAsync(
+                new CreateSubscriptionRequest { Amount = 100, Interval = SubscriptionInterval.Month, Description = "x" },
+                TestContext.Current.CancellationToken));
+    }
+
     [Theory]
     [InlineData(SubscriptionInterval.Day, 32)]
     [InlineData(SubscriptionInterval.Week, 5)]

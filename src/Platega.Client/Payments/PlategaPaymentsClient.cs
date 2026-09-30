@@ -152,12 +152,20 @@ internal sealed class PlategaPaymentsClient(PlategaConnection connection) : IPla
             ? code.ToString(CultureInfo.InvariantCulture)
             : throw new ArgumentException($"Status {status} cannot be used as an export filter.", nameof(status));
 
-    /// <summary>A 200 answer without an id or a link is not a created payment.</summary>
+    /// <summary>
+    /// A 200 answer without an id or a link is not a created payment. The link is sent to the payer's browser,
+    /// so only absolute http(s) URLs are accepted: a <c>javascript:</c> or relative value is rejected.
+    /// </summary>
     internal static void EnsureCreated(Guid id, string? url, string endpoint)
     {
         if (id == Guid.Empty || string.IsNullOrWhiteSpace(url))
         {
             throw new PlategaApiException(System.Net.HttpStatusCode.OK, endpoint, "Response has no transaction id or payment link.");
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? link) || (link.Scheme != Uri.UriSchemeHttps && link.Scheme != Uri.UriSchemeHttp))
+        {
+            throw new PlategaApiException(System.Net.HttpStatusCode.OK, endpoint, $"Payment link is not an absolute http(s) URL: {url}");
         }
     }
 

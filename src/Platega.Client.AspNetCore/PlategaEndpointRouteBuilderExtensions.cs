@@ -26,8 +26,11 @@ public static class PlategaEndpointRouteBuilderExtensions
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
 
+        // Platega authenticates only with X-MerchantId/X-Secret, which the handler verifies itself; host-level
+        // authorization (e.g. a fallback policy requiring a signed-in user) would otherwise reject every callback.
         return endpoints
             .MapPost(pattern, HandleAsync)
+            .AllowAnonymous()
             .DisableAntiforgery()
             .WithName("PlategaCallback");
     }
