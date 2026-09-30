@@ -1,0 +1,35 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <IsPackable>true</IsPackable>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Authors>Aleksandr Platonenkov</Authors>
+    <Copyright>Copyright (c) 2026 Aleksandr Platonenkov</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Platonenkov/Platega</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Platonenkov/Platega</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>platega;payments;payment-gateway;sbp;acquiring;webhooks;refunds;payouts</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>https://github.com/Platonenkov/Platega/blob/main/CHANGELOG.md</PackageReleaseNotes>
+
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)PACKAGE_README.md" Pack="true" PackagePath="README.md" Visible="false" />
+  </ItemGroup>
+</Project>

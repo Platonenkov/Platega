@@ -9,14 +9,19 @@ namespace Platega;
 /// <summary>Entry point grouping all Platega API areas.</summary>
 public interface IPlategaClient
 {
+    /// <summary>Payments, status, H2H and exports.</summary>
     IPlategaPaymentsClient Payments { get; }
 
+    /// <summary>Transaction cancellation and refunds.</summary>
     IPlategaRefundsClient Refunds { get; }
 
+    /// <summary>Merchant balances.</summary>
     IPlategaBalancesClient Balances { get; }
 
+    /// <summary>Recurring SBP subscriptions.</summary>
     IPlategaSubscriptionsClient Subscriptions { get; }
 
+    /// <summary>Payout API (enabled per merchant on request).</summary>
     IPlategaPayoutsClient Payouts { get; }
 }
 

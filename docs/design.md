@@ -1,86 +1,90 @@
-# Устройство решения
+# Design and Platega API behavior
 
-Страница описывает, как библиотека и демо работают с API Platega, и перечисляет допущения, которые ещё не проверены на живом API. Инструкции по запуску собраны в [README](../README.md).
+This page describes how the client maps the Platega API, which API behaviors it compensates for, what was verified against the live API, and what remains open. For setup and usage, see the [README](../README.md).
 
-## Возможности Platega
+## API coverage
 
-| Область | Метод и путь | Аутентификация | Метод клиента |
+| Area | Method and path | Authentication | Client method |
 |---|---|---|---|
-| Платёж, способ выбирает плательщик | `POST /v2/transaction/process` | `X-MerchantId`, `X-Secret` | `Payments.CreatePaymentAsync` с `Method = null` |
-| Платёж с заданным методом | `POST /transaction/process` | то же | `Payments.CreatePaymentAsync` с `Method` |
-| Статус транзакции | `GET /transaction/{id}` | то же | `Payments.GetTransactionAsync` |
-| QR для H2H (по подключению) | `GET /h2h/{id}` | то же | `Payments.GetH2HPaymentDataAsync` |
-| Выгрузка CSV, Excel, JSON | `POST /transaction/export/{format}` | то же | `Payments.ExportTransactionsAsync` |
-| Балансы | `GET /balance/all` | то же | `Balances.GetBalancesAsync` |
-| Проверка возможности отмены | `GET /transaction/{id}/cancel-supported` | то же | `Refunds.GetCancelAvailabilityAsync` |
-| Отмена с возвратом | `POST /transaction/{id}/cancel` | то же | `Refunds.CancelTransactionAsync` |
-| Создание СБП-подписки | `POST /transaction/process`, `paymentMethod: 6` | то же | `Subscriptions.CreateAsync` |
-| Подписка, список, отмена | `GET /subscription/{id}`, `GET /subscription`, `POST /subscription/{id}/cancel` | то же | `Subscriptions.GetAsync`, `ListAsync`, `CancelAsync` |
-| Вывод на карту RUB (по подключению) | `POST /api/v1/payouts/card-rub` | `Authorization: PG-HMAC` | `Payouts.CreateCardPayoutAsync` |
-| Сохранённые карты | `GET /api/v1/cards` | `Authorization: PG-HMAC` | `Payouts.GetSavedCardsAsync` |
-| Callback | POST на адрес из ЛК | `X-MerchantId`, `X-Secret` | `PlategaCallbackParser`, `MapPlategaCallback` |
+| Payment, payer chooses the method | `POST /v2/transaction/process` | `X-MerchantId`, `X-Secret` | `Payments.CreatePaymentAsync` with `Method = null` |
+| Payment with a fixed method | `POST /transaction/process` | Same | `Payments.CreatePaymentAsync` with `Method` |
+| Transaction status | `GET /transaction/{id}` | Same | `Payments.GetTransactionAsync` |
+| H2H QR (enabled on request) | `GET /h2h/{id}` | Same | `Payments.GetH2HPaymentDataAsync` |
+| CSV, Excel or JSON export | `POST /transaction/export/{format}` | Same | `Payments.ExportTransactionsAsync` |
+| Balances | `GET /balance/all` | Same | `Balances.GetBalancesAsync` |
+| Refund availability | `GET /transaction/{id}/cancel-supported` | Same | `Refunds.GetCancelAvailabilityAsync` |
+| Cancel and refund | `POST /transaction/{id}/cancel` | Same | `Refunds.CancelTransactionAsync` |
+| Create an SBP subscription | `POST /transaction/process` with `paymentMethod: 6` | Same | `Subscriptions.CreateAsync` |
+| Get, list and cancel subscriptions | `GET /subscription/{id}`, `GET /subscription`, `POST /subscription/{id}/cancel` | Same | `Subscriptions.GetAsync`, `ListAsync`, `CancelAsync` |
+| Payout to a RUB card (enabled on request) | `POST /api/v1/payouts/card-rub` | `Authorization: PG-HMAC` | `Payouts.CreateCardPayoutAsync` |
+| Saved payout cards | `GET /api/v1/cards` | `Authorization: PG-HMAC` | `Payouts.GetSavedCardsAsync` |
+| Callbacks | `POST` to the URL set in the cabinet | `X-MerchantId`, `X-Secret` | `PlategaCallbackParser`, `MapPlategaCallback` |
 
-Жизненный цикл платежа: `PENDING` → `CONFIRMED`, `CANCELED` или `CHARGEBACKED`. Ссылка на оплату по документации действует 15 минут, на живом API — 30 минут (`expiresIn: "00:30:00"`, 29.09.2026). Неоплаченный платёж Platega переводит в `CANCELED` и присылает callback не сразу по истечении ссылки, а пакетно: в наблюдении 29.09.2026 — примерно через 3 часа (создан в 09:40 UTC, отменён в 13:15 UTC вместе с другим платежом той же минуты). Поэтому фоновый опрос в демо следит за `PENDING`-платежами сутки.
+Payment lifecycle: `PENDING` → `CONFIRMED`, `CANCELED` or `CHARGEBACKED`.
 
-Жизненный цикл подписки: `PendingAgreement` → `Active` → `PastDue`, `Cancelled` или `Failed`. На подтверждение привязки даётся 30 минут.
+Subscription lifecycle: `PendingAgreement` → `Active` → `PastDue`, `Cancelled` or `Failed`. The payer has 30 minutes to confirm the binding.
 
-## Особенности API, учтённые в клиенте
+## API quirks handled by the client
 
-- **Регистр полей в callback-ах.** Callback платежа приходит в camelCase, callback-и подписок — в PascalCase. Разбор регистронезависимый.
-- **Статус и период подписки.** `GET /subscription/{id}` возвращает имя (`"Active"`, `"Month"`), `GET /subscription` — число. Конвертеры принимают оба вида.
-- **Метод оплаты.** В запросе и callback-е он передаётся числом, в ответах — строкой (`SBPQR`). Ответы хранят строку как есть, в поле `PaymentMethodName` или `PaymentMethod`.
-- **`paymentDetails` в ответе на создание.** Это либо объект, либо строка вида `"100 RUB"`.
-- **Опечатка в API.** Поле `mechantId` в ответе статуса сопоставлено со свойством `MerchantId`.
-- **Неизвестные значения.** Неизвестный статус читается как `Unknown` и не роняет разбор ответа.
-- **Валюта.** Хранится строкой, чтобы BYN, EUR или USDT не превращались в RUB.
-- **Content-Type.** Эндпоинты возвратов могут отвечать с `text/plain`, поэтому тело читается как JSON независимо от заголовка.
-- **Повторы.** Автоматических повторов нет: у создания платежа нет ключа идемпотентности. Для выводов ключ идемпотентности — обязательный параметр: вызывающий код сохраняет его до отправки и повторяет с ним же, если ответ потерян.
-- **Редиректы.** Автоматические редиректы отключены: стандартный обработчик при редиректе переносит пользовательские заголовки, и `X-Secret` ушёл бы на адрес из `Location`.
-- **Таймаут.** Ответ читается целиком в пределах `Timeout`, поэтому зависшее тело ответа не блокирует вызов бессрочно.
-- **Ответ без идентификатора.** Ответ `200` без `transactionId` или ссылки на оплату считается ошибкой, а не созданным платежом.
-- **Проверка Callback URL.** При сохранении URL в ЛК Platega отправляет `POST` с телом `{}` и сохраняет адрес только при успешном ответе (замечено 29.09.2026). Endpoint отвечает на пустое тело или `{}` кодом `200`, не вызывая обработчик, и сообщает о проверке через `IPlategaCallbackHandler.OnProbeAsync`.
-- **Подпись Payout.** Тело сериализуется один раз, и эти же байты подписываются и отправляются.
+- **Field casing.** Payment callbacks use camelCase, subscription callbacks use PascalCase. Parsing is case-insensitive.
+- **Subscription status and interval.** `GET /subscription/{id}` returns names (`"Active"`, `"Month"`), `GET /subscription` returns numbers. The converters accept both.
+- **Payment method.** Requests and callbacks carry a number, responses carry a name (`SBPQR`). Responses keep the name as is.
+- **`paymentDetails` in the creation response** is either an object or a string such as `"100 RUB"`.
+- **Misspelled field.** `mechantId` in the status response maps to `MerchantId`.
+- **Unknown or null values.** Unknown statuses read as `Unknown` instead of failing the whole response. Currencies stay strings, so BYN, EUR or USDT are never read as RUB.
+- **Content type.** Refund endpoints may answer `text/plain` with a JSON body, so the body is parsed regardless of the header.
+- **Redirects.** Automatic redirects are disabled: the default handler forwards custom headers on a redirect, which would send `X-Secret` to the host in `Location`.
+- **Timeouts.** The whole response is read within `Timeout`, so a stalled body cannot block a call indefinitely.
+- **Payout signing.** The body is serialized once, and the same bytes are signed and sent. The signed path is the absolute path actually sent.
+- **Callback URL probe.** When the URL is saved in the cabinet, Platega sends `POST {}` and saves the URL only after a success answer. The endpoint answers such probes with `200` without calling the handler and reports them through `IPlategaCallbackHandler.OnProbeAsync`.
+- **Status code pages.** The callback endpoint disables status code pages for its own responses, so host middleware cannot turn `401`/`500` into another status.
 
-## Поток оплаты в демо
+## Verified against the live API
 
-1. Магазин создаёт заказ в SQLite и платёж в Platega. `orderId` и `payload` — это идентификатор заказа.
-2. Плательщик уходит на платёжную страницу, а затем возвращается на `/orders/{id}/result`. Эта страница опрашивает статус каждые 3 секунды.
-3. Platega отправляет callback в админку. `CallbackProcessor` пишет его в журнал и берёт итоговый статус из `GET /transaction/{id}`, а не из тела callback-а: callback защищён только статическим секретом.
-4. `PendingPaymentsPoller` в админке раз в 30 секунд перепроверяет `PENDING`-платежи и подписки, ожидающие привязки, за последние сутки. Это страховка от потерянных callback-ов и единственный путь обновления при локальном запуске.
-5. Списания по подписке сохраняются по идентификатору транзакции-списания, поэтому повторная доставка callback-а не увеличивает счётчик.
-6. Синхронизация статуса использует оптимистичную блокировку и не переводит статус назад: например, устаревший ответ `CONFIRMED` не затирает уже записанный `CHARGEBACKED`.
-7. Если ответ на создание платежа потерялся, у заказа нет `transactionId`. Такой заказ находится по `payload` из callback-а: это идентификатор заказа. Подписка, которой нет в локальной базе, восстанавливается из API.
+Verified on 2026-09-29 with a real merchant account. Real responses are stored in the test fixtures with the `-live` suffix and in `error-*.json`.
 
-Магазин и админка — отдельные процессы с общей базой SQLite в режиме WAL.
+**Payments**
 
-## Непроверенные допущения
+- `POST /v2/transaction/process` matches the documentation, but `expiresIn` is 30 minutes (the documentation says 15) and `rate` is `0`.
+- `GET /transaction/{id}` also returns `refundStatus`, `refundStatusMessage` and `createdAt`. Until a method is chosen, `paymentMethod` and `qr` are `null`. The `orderId` from the request is not echoed in `externalId`.
+- An unpaid payment is moved to `CANCELED`, with a callback, in batches: about three hours after `expiresIn` elapsed in the observed case. Support confirmed the automatic cancellation.
+- For SBP the payer pays an 8% fee on top of the order amount: a 5.00 RUB order was paid as 5.40, and the callback `amount` was `5.40`. The merchant balance was credited with 5.00.
 
-Эти пункты взяты из неполной документации и должны быть сверены с живым API, когда будет выдан ключ:
+**Refunds**
 
-1. **Числовые коды статуса подписки.** `0` — `PendingAgreement`, `1` — `Active`, `2` — `PastDue`, `3` — `Cancelled`, `4` — `Failed`, по порядку объявления в схеме. Используются в `GET /subscription` и в фильтре `status`. Проверить пока нельзя: на тестовом аккаунте СБП-подписки не подключены, создание отвечает `400 Common:VAL_0001` с деталью `paymentMethod: Subscription`. Проверяет живой тест `Subscription_NumericListStatusMatchesNamedStatus` после подключения подписок менеджером.
-2. ~~**Коды статусов в выгрузке.**~~ Подтверждены поддержкой Platega 29.09.2026: `1` — PENDING, `6` — CANCELED, `7` — CONFIRMED, `9` — CHARGEBACKED. `TransactionExportRequest.Statuses` принимает `PaymentStatus` и сам переводит их в коды; числовой статус в ответах API тоже распознаётся.
-3. **PATH в подписи Payout.** Считается без query-строки, в частности для `GET /api/v1/cards?onlyActive=false`.
-4. **Формат тела ошибок.** Подтверждён для 401 и 404 на живом API (29.09.2026): `{"code":"Auth:SIGN_1001","type":4002,"message":"Merchant secret key is not correct.","data":[],"traceId":"…"}`. Поля разбираются в `PlategaApiException.ErrorCode`, `ErrorType`, `ErrorMessage` и `TraceId`, а массив `data` вида `[{"key":"Id","message":"Transaction … not exist"}]` — в `ErrorDetails`. Для 400 формат ещё не видели; тело в любом случае сохраняется в `ResponseBody`. При неверном ключе API отвечает 401 раньше, чем проверяет существование транзакции.
-5. **`localhost` в `return` и `failedUrl`.** Неизвестно, принимает ли Platega такие адреса. Если нет, магазин тоже нужно запускать на публичном адресе.
-6. ~~**Тестовая оплата.**~~ Ответ поддержки 29.09.2026: тестового режима нет. Есть отдельный тестовый кабинет (доступ выдаёт менеджер); иначе рекомендуют проверять на основном кабинете платежами по 1 рублю с последующим возвратом.
+- `cancel-supported` for a paid transaction returned `supported: true` and a `totalDeductUsdt` equal to the credited amount at the current rate.
+- `POST /transaction/{id}/cancel` answered 200; the status changed to `CHARGEBACKED` and the callback arrived 73 seconds later. Right after `cancel`, the API still reports `CONFIRMED`.
+- Refunds are charged to the USDT balance even for RUB payments, so the USDT balance can go negative. Refunds are allowed when either balance covers them.
 
-Уже подтверждено на живом API (29.09.2026):
+**Callbacks**
 
-- `POST /v2/transaction/process`: ответ совпадает с документацией, но `expiresIn` равен 30 минутам, а `rate` — `0`;
-- `GET /transaction/{id}`: помимо документированных полей приходят `refundStatus`, `refundStatusMessage` и `createdAt` (добавлены в `PlategaTransaction`); у платежа без выбранного метода `paymentMethod` и `qr` равны `null`; `orderId` из запроса в `externalId` не возвращается;
-- `GET /transaction/{id}/cancel-supported` для неоплаченного платежа: `supported: false` без `blockReason`;
-- `GET /balance/all` (у RUB нет `frozenBalance`), пустая страница `GET /subscription`;
-- тела ошибок 400, 401 и 404.
-- callback платежа: пришёл на тестовый сервер и прошёл проверку `X-MerchantId`/`X-Secret`. Тело в camelCase, отформатировано с отступами, `paymentMethod` может быть `null`, сумма — с 16 знаками после запятой;
-- Callback URL запоминается в транзакции при её создании: у транзакции, созданной до настройки URL, в ЛК указано «URL вебхука: N/A», и сама Platega на такой URL ничего не шлёт. Кнопка «Переотправить Webhook» в карточке транзакции отправляет callback на текущий URL — так удобно проверять доставку;
-- полный цикл на основном кабинете (29.09.2026): оплата 5 ₽ через СБП → callback `CONFIRMED` → возврат, оформленный в ЛК → callback `CHARGEBACKED`; все callback-и прошли проверку ключа, статус заказа в демо сменился и по callback-у, и по опросу API. Во время обработки возврата ЛК показывал статус «Неизвестен», API в тот же момент уже отдавал `CHARGEBACKED`. Сам вызов возврата через API (`cancel-supported` и `cancel`) вживую не проверялся — возврат оформлен в ЛК;
-- возврат через API из админки (29.09.2026): `cancel-supported` для пополнения на 1 ₽ вернул `supported: true` и `totalDeductUsdt: 0.0112006400000000` (это 1,00 ₽ по курсу 89,28, то есть зачисленная сумма, а не уплаченные 1,08 ₽); `POST /transaction/{id}/cancel` ответил 200, callback `CHARGEBACKED` пришёл через 73 секунды. Возврат асинхронный: сразу после `cancel` API ещё отдаёт `CONFIRMED`;
-- возвраты списываются с USDT-баланса по курсу, даже для рублёвых платежей: после возврата 5,40 ₽ баланс стал `RUB 6.00`, `USDT -0.06`. `cancel-supported` разрешает возврат, если средств хватает хотя бы на одном из балансов;
-- комиссия СБП для плательщика — 8 %: заказ на 5 ₽ оплачен как 5,40 ₽, на 1 ₽ — как 1,08 ₽;
-- при оплате через СБП покупатель платит сумму с комиссией сверху: заказ на 5 ₽ оплачен как 5,40 ₽, и в callback `CONFIRMED` пришло `amount: 5.40`, а на баланс мерчанта зачислено 5 ₽. Сверять сумму callback-а с суммой заказа на равенство нельзя;
-- возврат возможен, только если баланс мерчанта покрывает всю уплаченную покупателем сумму вместе с комиссией (ответ поддержки 29.09.2026): для платежа 5,40 ₽ на балансе должно быть не меньше 5,40 ₽. Иначе `cancel-supported` возвращает `supported: false`, а кнопка возврата в ЛК недоступна;
-- неоплаченный платёж переходит в `CANCELED` с callback-ом автоматически, но примерно через 3 часа после истечения `expiresIn` (подтверждено поддержкой и наблюдением); ручная переотправка из ЛК отправляет callback сразу.
+- `CONFIRMED`, `CANCELED` and `CHARGEBACKED` payment callbacks were delivered and authenticated. Bodies are indented camelCase JSON; `paymentMethod` can be `null`; amounts have 16 decimal places.
+- The callback URL is captured per transaction when the transaction is created. Transactions created before the URL was saved show "N/A" and never call it. The cabinet's "resend webhook" button sends a callback to the current URL.
 
-Реальные ответы лежат в фикстурах тестов с суффиксом `-live` и `error-*.json`.
+**Errors and balances**
 
-Эмулятор `Platega.FakeServer` реализует документацию в том же прочтении, поэтому зелёные интеграционные тесты не подтверждают эти пункты.
+- Error bodies have the form `{"code":"Auth:SIGN_1001","type":4002,"message":"…","data":[{"key":"Id","message":"…"}],"traceId":"…"}` for 400, 401 and 404. With a wrong key, the API answers 401 before checking whether a transaction exists.
+- `GET /balance/all` omits `frozenBalance` for RUB.
+
+**Answers from Platega support**
+
+- Export status codes: `1` PENDING, `6` CANCELED, `7` CONFIRMED, `9` CHARGEBACKED. `TransactionExportRequest.Statuses` takes `PaymentStatus` values and sends these codes.
+- There is no sandbox. A separate test cabinet is available on request, but callbacks cannot be configured there. Otherwise, test with small payments and refunds.
+
+## Open questions
+
+1. **Numeric subscription status codes** in `GET /subscription` and its `status` filter are assumed to follow the declaration order of the documented schema: `0` PendingAgreement, `1` Active, `2` PastDue, `3` Cancelled, `4` Failed. They could not be verified: SBP subscriptions were not enabled on the account (`400 Common:VAL_0001` with `paymentMethod: Subscription`). The live test `Subscription_NumericListStatusMatchesNamedStatus` checks this once subscriptions are enabled.
+2. **Signed path for payouts** excludes the query string, for example for `GET /api/v1/cards?onlyActive=false`. The Payout API was not enabled on the account.
+3. **H2H** was not enabled on the account.
+4. **Refund balance rule.** Support stated that a refund requires a balance covering the full amount paid including the fee, while the observed `totalDeductUsdt` equals the credited amount.
+
+`Platega.FakeServer` implements the documentation as this client reads it, so passing integration tests do not confirm these points.
+
+## Demo apps
+
+1. The shop creates an order in SQLite and a payment in Platega; `orderId` and `payload` carry the order id.
+2. The payment page opens in a new tab; the order status page polls every 3 seconds.
+3. The admin panel receives callbacks, logs them, and takes the final status from `GET /transaction/{id}` rather than from the callback body.
+4. `PendingPaymentsPoller` re-checks pending payments and subscriptions awaiting binding every 30 seconds for a day: a safety net for lost callbacks and the only update path on a local machine.
+5. Status updates use optimistic concurrency and never move a status backwards, for example a stale `CONFIRMED` never overwrites `CHARGEBACKED`.
+6. If the creation response was lost, the order is found by the callback `payload`; a subscription missing locally is restored from the API.

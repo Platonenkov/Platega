@@ -21,13 +21,16 @@ public enum PlategaCallbackKind
 /// </summary>
 public sealed record PlategaCallback
 {
+    /// <summary>What the callback is about.</summary>
     public required PlategaCallbackKind Kind { get; init; }
 
     /// <summary>Transaction id, or the subscription id for <see cref="PlategaCallbackKind.SubscriptionStatusChanged"/>.</summary>
     public required Guid Id { get; init; }
 
+    /// <summary>Amount paid by the customer. For SBP it includes the fee charged on top of the order amount, so do not compare it with the order amount for equality.</summary>
     public decimal? Amount { get; init; }
 
+    /// <summary>Currency code of <see cref="Amount"/>.</summary>
     public string? Currency { get; init; }
 
     /// <summary>Status exactly as sent by Platega.</summary>
@@ -39,12 +42,16 @@ public sealed record PlategaCallback
     /// <summary>Subscription status; <see cref="SubscriptionCallbackStatus.Unknown"/> for payment callbacks.</summary>
     public SubscriptionCallbackStatus SubscriptionStatus { get; init; }
 
+    /// <summary>Payment method; <see cref="PaymentMethod.Unknown"/> when Platega sends <c>null</c> (no method was chosen).</summary>
     public PaymentMethod PaymentMethod { get; init; }
 
+    /// <summary>The <c>payload</c> passed when the payment was created, e.g. your order id.</summary>
     public string? Payload { get; init; }
 
+    /// <summary>Subscription id for subscription callbacks; <c>null</c> for regular payments.</summary>
     public Guid? SubscriptionId { get; init; }
 
+    /// <summary>Next scheduled subscription charge, when Platega reports one.</summary>
     public DateTimeOffset? NextChargeAt { get; init; }
 
     /// <summary>Original request body, for auditing.</summary>
@@ -70,8 +77,10 @@ public sealed record PlategaCallbackRejection(PlategaCallbackRejectionReason Rea
 /// </summary>
 public interface IPlategaCallbackHandler
 {
+    /// <summary>Processes an authenticated callback. Throw to answer 500 so that Platega retries the delivery.</summary>
     Task HandleAsync(PlategaCallback callback, CancellationToken cancellationToken);
 
+    /// <summary>Called for requests rejected because of wrong credentials or an invalid body, e.g. to log them.</summary>
     Task OnRejectedAsync(PlategaCallbackRejection rejection, CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>

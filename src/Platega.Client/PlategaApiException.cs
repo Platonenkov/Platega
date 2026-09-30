@@ -13,6 +13,7 @@ public sealed class PlategaApiException : Exception
 {
     private const int MaxBodyLength = 2048;
 
+    /// <summary>Creates the exception and parses a Platega error body when present.</summary>
     public PlategaApiException(HttpStatusCode statusCode, string endpoint, string? responseBody, Exception? innerException = null)
         : base(BuildMessage(statusCode, endpoint, responseBody), innerException)
     {
