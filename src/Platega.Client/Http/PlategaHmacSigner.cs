@@ -47,5 +47,5 @@ public static class PlategaHmacSigner
 
     /// <summary>Lower-case hex SHA-256 of the body; for an empty body this is the well-known <c>e3b0c442...</c> constant.</summary>
     public static string Sha256Hex(ReadOnlySpan<byte> body) =>
-        Convert.ToHexStringLower(SHA256.HashData(body));
+        Convert.ToHexString(SHA256.HashData(body)).ToLowerInvariant();
 }

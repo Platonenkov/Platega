@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
-    <IsPackable>false</IsPackable>
     <RootNamespace>Platega.Tests</RootNamespace>
   </PropertyGroup>
 
@@ -24,7 +25,15 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Platega.Client\Platega.Client.csproj" />
     <ProjectReference Include="..\..\src\Platega.Client.AspNetCore\Platega.Client.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <!-- The emulator is a .NET 10 app, so the end-to-end tests against it run on net10.0 only. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
     <ProjectReference Include="..\..\samples\Platega.FakeServer\Platega.FakeServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0'">
+    <Compile Remove="FakeServerIntegrationTests.cs" />
   </ItemGroup>
 
 </Project>
