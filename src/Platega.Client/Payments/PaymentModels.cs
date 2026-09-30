@@ -51,8 +51,10 @@ public sealed record PayerMetadata
 /// <summary>Result of payment creation, normalized across both creation endpoints.</summary>
 public sealed record CreatedPayment
 {
+    /// <summary>Platega transaction id; use it to query the status.</summary>
     public required Guid TransactionId { get; init; }
 
+    /// <summary>Status right after creation, normally <see cref="PaymentStatus.Pending"/>.</summary>
     public required PaymentStatus Status { get; init; }
 
     /// <summary>Payment page the payer must be sent to.</summary>
@@ -77,48 +79,63 @@ public sealed record CreatedPayment
 /// <summary>Transaction details returned by <c>GET /transaction/{id}</c>.</summary>
 public sealed record PlategaTransaction
 {
+    /// <summary>Transaction id.</summary>
     public required Guid Id { get; init; }
 
+    /// <summary>Current transaction status.</summary>
     public PaymentStatus Status { get; init; }
 
+    /// <summary>Order amount and currency (<c>paymentDetails</c>).</summary>
     [JsonPropertyName("paymentDetails")]
     [JsonConverter(typeof(FlexibleMoneyConverter))]
     public Money? Amount { get; init; }
 
+    /// <summary>Merchant display name.</summary>
     public string? MerchantName { get; init; }
 
     /// <summary>Merchant id. The API spells the field <c>mechantId</c>.</summary>
     [JsonPropertyName("mechantId")]
     public string? MerchantId { get; init; }
 
+    /// <summary>Commission in the payment currency.</summary>
     [JsonPropertyName("comission")]
     public decimal? Commission { get; init; }
 
+    /// <summary>Commission converted to USDT.</summary>
     [JsonPropertyName("comissionUsdt")]
     public decimal? CommissionUsdt { get; init; }
 
+    /// <summary>Commission type code as returned by Platega.</summary>
     [JsonPropertyName("comissionType")]
     public int? CommissionType { get; init; }
 
+    /// <summary>Amount converted to USDT.</summary>
     public decimal? AmountUsdt { get; init; }
 
     /// <summary>Human-readable method name, e.g. <c>SBPQR</c>.</summary>
     public string? PaymentMethod { get; init; }
 
+    /// <summary>Time left until the payment link expires.</summary>
     [JsonConverter(typeof(TolerantTimeSpanConverter))]
     public TimeSpan? ExpiresIn { get; init; }
 
+    /// <summary>Redirect address after a successful payment (<c>return</c>).</summary>
     [JsonPropertyName("return")]
     public string? ReturnUrl { get; init; }
 
+    /// <summary>QR payload or payment link; <c>null</c> until a method is chosen.</summary>
     public string? Qr { get; init; }
 
+    /// <summary>Platega success page for this transaction.</summary>
     public string? PayformSuccessUrl { get; init; }
 
+    /// <summary>The <c>payload</c> passed at creation.</summary>
     public string? Payload { get; init; }
 
+    /// <summary>External id; the <c>orderId</c> from the request is not echoed here.</summary>
     public string? ExternalId { get; init; }
 
+    /// <summary>Description shown to the payer.</summary>
     public string? Description { get; init; }
 
     /// <summary>Refund state; not in the documentation, returned by the live API (<c>null</c> when there is no refund).</summary>
@@ -134,6 +151,7 @@ public sealed record PlategaTransaction
 /// <summary>Host-to-host payment data returned by <c>GET /h2h/{id}</c>.</summary>
 public sealed record H2HPaymentData
 {
+    /// <summary>Amount to pay.</summary>
     public decimal Amount { get; init; }
 
     /// <summary>QR payload or payment link, e.g. an <c>https://qr.nspk.ru/...</c> URL.</summary>
@@ -143,16 +161,21 @@ public sealed record H2HPaymentData
 /// <summary>File format of a transaction export.</summary>
 public enum TransactionExportFormat
 {
+    /// <summary>CSV file.</summary>
     Csv,
+    /// <summary>Excel file.</summary>
     Excel,
+    /// <summary>JSON file.</summary>
     Json,
 }
 
 /// <summary>Filters of a transaction export.</summary>
 public sealed record TransactionExportRequest
 {
+    /// <summary>Start of the period (inclusive).</summary>
     public required DateTimeOffset From { get; init; }
 
+    /// <summary>End of the period (inclusive).</summary>
     public required DateTimeOffset To { get; init; }
 
     /// <summary>

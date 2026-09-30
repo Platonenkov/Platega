@@ -8,6 +8,7 @@ namespace Platega;
 /// </summary>
 public sealed record Money(decimal Amount, string Currency)
 {
+    /// <summary>Formats the amount with an invariant culture, e.g. <c>100.5 RUB</c>.</summary>
     public override string ToString() =>
         $"{Amount.ToString("0.##", CultureInfo.InvariantCulture)} {Currency}".TrimEnd();
 }

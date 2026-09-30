@@ -1,207 +1,174 @@
-# Platega для .NET
+# Platega .NET client
 
-Внутренняя .NET-библиотека для платёжного шлюза [Platega](https://docs.platega.io/) и демо-стенд из двух Blazor-приложений: магазин (плательщик) и админка (мерчант). Официального .NET SDK у Platega нет: есть только PHP, Python и Node.js.
+[![CI](https://github.com/Platonenkov/Platega/actions/workflows/ci.yml/badge.svg)](https://github.com/Platonenkov/Platega/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/Platega.Client.svg)](https://www.nuget.org/packages/Platega.Client)
 
-Устройство решения и список допущений, которые ещё не проверены на живом API, описаны в [docs/design.md](docs/design.md).
+Unofficial .NET client for the [Platega](https://platega.io) payment gateway, with an ASP.NET Core callback endpoint, a local API emulator, and two Blazor demo apps.
 
-## Состав
+> This project is not affiliated with or endorsed by Platega. Platega publishes official SDKs for PHP, Python and Node.js only.
 
-| Проект | Назначение |
+## Packages
+
+| Package | Purpose |
 |---|---|
-| `src/Platega.Client` | Клиент API: платежи, статусы, H2H, выгрузки, балансы, возвраты, СБП-подписки, Payout API с HMAC-подписью, разбор callback-ов |
-| `src/Platega.Client.AspNetCore` | Endpoint приёма callback-ов для ASP.NET Core |
-| `samples/Platega.FakeServer` | Локальный эмулятор Platega: API, платёжная страница, отправка callback-ов |
-| `samples/Platega.Demo.Data` | Общие для демо сущности, SQLite и сервисы |
-| `samples/Platega.Demo.Shop` | Магазин: каталог, оплата, статус заказа, подписки |
-| `samples/Platega.Demo.Admin` | Админка: балансы, транзакции и возвраты, подписки, выгрузки, выводы, журнал callback-ов |
-| `tests/Platega.Client.Tests` | Юнит-тесты и интеграционные тесты клиента против эмулятора |
-| `deploy/` | Docker-образ, `docker-compose.yml` и Caddy для тестового сервера |
+| [`Platega.Client`](https://www.nuget.org/packages/Platega.Client) | API client: payments (universal or fixed payment form), status, H2H, exports, balances, refunds, recurring SBP subscriptions, Payout API with HMAC-SHA256 signing, callback authentication and parsing |
+| [`Platega.Client.AspNetCore`](https://www.nuget.org/packages/Platega.Client.AspNetCore) | `MapPlategaCallback` endpoint for ASP.NET Core minimal APIs |
 
-## Быстрый старт на эмуляторе
+Both packages target .NET 8 and .NET 10.
 
-Для запуска ключ Platega не нужен: демо-приложения в окружении `Development` обращаются к `Platega.FakeServer` с тестовыми учётными данными из `appsettings.Development.json`.
+```bash
+dotnet add package Platega.Client
+dotnet add package Platega.Client.AspNetCore
+```
 
-Требования: .NET SDK 10.
+## Quick start
 
-1. Запустите эмулятор:
-
-   ```bash
-   dotnet run --project samples/Platega.FakeServer --launch-profile http
-   ```
-
-   Пульт эмулятора откроется по адресу `http://localhost:5190`.
-
-2. Во втором терминале запустите админку. Она принимает callback-и от эмулятора:
-
-   ```bash
-   dotnet run --project samples/Platega.Demo.Admin --launch-profile http
-   ```
-
-3. В третьем терминале запустите магазин:
-
-   ```bash
-   dotnet run --project samples/Platega.Demo.Shop --launch-profile http
-   ```
-
-4. Откройте `http://localhost:5101`, выберите товар и нажмите «Оплатить». Страница оплаты откроется в новой вкладке, а магазин покажет страницу заказа. На странице эмулятора нажмите «Оплатить» или «Отклонить» — статус заказа обновится сам.
-
-5. Откройте админку `http://localhost:5201`. Пароль для окружения `Development` — `admin`.
-
-Оба приложения пишут в одну базу `%LOCALAPPDATA%\PlategaDemo\demo.db`. Чтобы начать с чистого листа, удалите эту папку.
-
-Сценарии, которые у реальной Platega происходят сами, в эмуляторе запускаются вручную с пульта `http://localhost:5190`:
-
-- истечение ссылки на оплату;
-- успешное или неуспешное списание по подписке.
-
-## Подключение к реальной Platega
-
-Реальные ключи никогда не записываются в `appsettings*.json`. Локально их задают через user-secrets, на сервере — через переменные окружения.
-
-1. В личном кабинете откройте «Настройки» и проверьте поле Callback URL. Там должен быть ваш адрес или пустое значение.
-
-   > **Предупреждение.** Platega отправляет callback с заголовком `X-Secret`. Если в поле остался чужой адрес, API-ключ уйдёт на этот адрес. Замените URL до того, как нажмёте «Сгенерировать».
-
-2. Сгенерируйте API-ключ и сразу сохраните его: полный ключ показывается один раз.
-
-3. Задайте ключи для админки. Для магазина выполните те же команды с `samples/Platega.Demo.Shop`, кроме `PayoutSecret` и `Admin:Password`:
-
-   ```bash
-   dotnet user-secrets set "Platega:MerchantId" "<merchant-id>" --project samples/Platega.Demo.Admin
-   dotnet user-secrets set "Platega:Secret" "<api-key>" --project samples/Platega.Demo.Admin
-   dotnet user-secrets set "Platega:BaseAddress" "https://app.platega.io/" --project samples/Platega.Demo.Admin
-   dotnet user-secrets set "Admin:Password" "<пароль-админки>" --project samples/Platega.Demo.Admin
-   ```
-
-   Здесь `<merchant-id>` и `<api-key>` — значения из «Настройки → Интеграция и API». Секрет Payout API (`Platega:PayoutSecret`) задают только после того, как менеджер подключит выводы.
-
-4. Запустите магазин и админку, как в быстром старте. Эмулятор запускать не нужно.
-
-При локальном запуске callback-и до вашей машины не дойдут: Platega принимает только публичный HTTPS-адрес. Статусы подтянет фоновый опрос админки: каждые 30 секунд она проверяет платежи в статусе `PENDING` за последние сутки. Чтобы проверить приём callback-ов, разверните демо на тестовом сервере.
-
-## Развёртывание на тестовом сервере
-
-Процедура проверена на тестовом сервере (Ubuntu 24.04, 1 vCPU, 1 ГБ RAM): Caddy выпустил сертификаты Let's Encrypt, Platega приняла Callback URL и доставила callback-и `CONFIRMED`, `CANCELED` и `CHARGEBACKED`. Если Let's Encrypt недоступен, Caddy автоматически переключается на ZeroSSL.
-
-Требования:
-
-- Linux-сервер с Docker Compose;
-- открытые порты 80 и 443;
-- два DNS-имени, например `shop.<домен>` и `admin.<домен>`, указывающие на сервер.
-
-1. Скопируйте репозиторий на сервер и перейдите в `deploy/`.
-2. Создайте файл `.env` из шаблона и заполните его:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Файл `.env` содержит секреты и не попадает в git.
-
-3. Соберите образы и запустите стенд:
-
-   ```bash
-   docker compose up -d --build
-   ```
-
-   Caddy сам получит сертификаты Let's Encrypt для `SHOP_DOMAIN` и `ADMIN_DOMAIN`. На сервере с 1 ГБ памяти сборку .NET лучше не запускать: соберите образы у себя и перенесите их командой `docker save … | ssh <host> docker load`, как описано в комментарии в начале `docker-compose.yml`, затем выполните на сервере `docker compose up -d`.
-
-4. Проверьте, что endpoint отвечает. Callback без заголовков должен вернуть `401`:
-
-   ```bash
-   curl -i -X POST https://<ADMIN_DOMAIN>/platega/callback -H "Content-Type: application/json" -d "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"status\":\"CONFIRMED\"}"
-   ```
-
-   Запрос с телом `{}` вернёт `200`: так Platega проверяет адрес при сохранении, и endpoint отвечает на проверку без обработки.
-
-5. В личном кабинете Platega укажите Callback URL `https://<ADMIN_DOMAIN>/platega/callback` и сохраните. Адрес запоминается в транзакции при её создании, поэтому callback-и придут только по транзакциям, созданным после сохранения.
-
-После правки `.env` выполните `docker compose up -d`: контейнеры пересоздаются и получают новые значения, сами они `.env` не перечитывают.
-
-База SQLite и ключи Data Protection хранятся в томе `demo-data`.
-
-## Использование библиотеки
-
-Библиотека регистрируется одной строкой. `AddPlatega` читает секцию `Platega`: `MerchantId`, `Secret`, `BaseAddress`, `PayoutSecret`, `Timeout`. При пустых `MerchantId` или `Secret` приложение не стартует:
+Register the client. `AddPlatega` binds the `Platega` configuration section (`MerchantId`, `Secret`, `BaseAddress`, `PayoutSecret`, `Timeout`) and fails at startup when `MerchantId` or `Secret` is empty:
 
 ```csharp
 builder.Services.AddPlatega(builder.Configuration.GetSection("Platega"));
 ```
 
-Создание платежа. Если `Method` равен `null`, способ оплаты выбирает плательщик на странице Platega:
+Keep the API key out of `appsettings*.json`: use user secrets locally and environment variables (`Platega__Secret`) in production.
+
+Create a payment and send the payer to the returned page. When `Method` is `null`, the payer chooses the payment method on the Platega page (universal payment form):
 
 ```csharp
 CreatedPayment payment = await platega.Payments.CreatePaymentAsync(new CreatePaymentRequest
 {
     Amount = new Money(1290m, "RUB"),
-    Description = "Заказ 42",
+    Description = "Order 42",
     ReturnUrl = new Uri("https://shop.example.com/orders/42/result"),
     FailedUrl = new Uri("https://shop.example.com/orders/42/result?failed=1"),
-    Method = PaymentMethod.SbpQr,
     OrderId = "42",
+    Payload = "42",
 }, cancellationToken);
 
 // Redirect the payer to payment.PaymentUrl.
 ```
 
-Здесь `platega` — внедрённый `IPlategaClient`. Остальные области API доступны через его свойства `Refunds`, `Balances`, `Subscriptions` и `Payouts`.
+Here `platega` is an injected `IPlategaClient`. Its `Refunds`, `Balances`, `Subscriptions` and `Payouts` properties expose the other API areas.
 
-Приём callback-ов. Реализуйте `IPlategaCallbackHandler` и подключите endpoint из `Platega.Client.AspNetCore`:
+## Receiving callbacks
+
+Implement `IPlategaCallbackHandler` and map the endpoint from `Platega.Client.AspNetCore`:
 
 ```csharp
 builder.Services.AddScoped<IPlategaCallbackHandler, MyCallbackHandler>();
+
 app.MapPlategaCallback("/platega/callback");
 ```
 
-Endpoint возвращает:
+Then set `https://<your-host>/platega/callback` as the callback URL in the Platega merchant cabinet. The endpoint answers:
 
-- `200` без вызова обработчика на проверку доступности: пустое тело или `{}`. Такой запрос Platega отправляет, когда вы сохраняете Callback URL в ЛК;
-- `401`, если заголовки `X-MerchantId`/`X-Secret` не совпали с настройками;
-- `400`, если тело не является callback-ом;
-- `500`, если обработчик упал, — тогда Platega повторит доставку;
-- `200` после успешной обработки.
+- `200` to a reachability probe (an empty body or `{}`), without calling the handler. Platega sends such a probe when you save the callback URL;
+- `401` when the `X-MerchantId`/`X-Secret` headers do not match the configuration;
+- `400` when the body is not a Platega callback;
+- `500` when the handler throws, so that Platega retries the delivery;
+- `200` after the handler succeeds.
 
-Обработчик обязан быть идемпотентным. Статус заказа надёжнее перепроверить через `GetTransactionAsync`, как это делает `CallbackProcessor` в демо.
+Guidelines for the handler:
 
-Endpoint помечен `AllowAnonymous` и проверяет `X-MerchantId`/`X-Secret` сам, поэтому работает и в приложениях, где по умолчанию требуется авторизация. Адрес callback-а публичный, поэтому частоту запросов к нему стоит ограничить. Например, так, если в приложении подключён `AddRateLimiter` с политикой `platega`:
+- **Make it idempotent.** Platega retries an undelivered callback up to three times.
+- **Re-read the status.** Callbacks are authenticated only by a static secret, so take the final status from `GetTransactionAsync` before fulfilling an order.
+- **Do not match amounts exactly.** For SBP the callback `amount` includes the fee paid on top of the order amount (for example, 5.40 for a 5.00 order).
+- **Rate-limit the endpoint.** It is public and marked `AllowAnonymous`, because Platega cannot pass your application's authentication. For example, with a `platega` policy registered through `AddRateLimiter`:
 
-```csharp
-app.MapPlategaCallback("/platega/callback").RequireRateLimiting("platega");
-```
+  ```csharp
+  app.MapPlategaCallback("/platega/callback").RequireRateLimiting("platega");
+  ```
 
-Лимит закладывайте с запасом: Platega повторяет недоставленный callback до трёх раз.
+## Errors and retries
 
-Ошибки API приходят как `PlategaApiException` с полями `StatusCode`, `Endpoint`, `ResponseBody` и разобранными `ErrorCode`, `ErrorMessage`, `ErrorDetails`, `TraceId`. Ответ на создание платежа или подписки без ID или с ссылкой, которая не является абсолютным адресом `http`/`https`, тоже считается ошибкой: такая ссылка не отправляется в браузер покупателя. Создание платежа не повторяется автоматически: у эндпоинта нет ключа идемпотентности, и повтор может создать дубль. Для выводов ключ идемпотентности обязателен и принадлежит вызывающему коду: сохраните его до вызова и повторяйте с ним же, если результат неизвестен.
+API errors raise `PlategaApiException` with `StatusCode`, `Endpoint` and `ResponseBody`, and the parsed Platega error fields `ErrorCode`, `ErrorType`, `ErrorMessage`, `ErrorDetails` and `TraceId`. Quote `TraceId` when contacting Platega support.
 
-## Тесты
+The client never retries automatically. Payment creation has no idempotency key, so a blind retry can create a duplicate payment. Payouts require an idempotency key owned by the caller: persist it before the call and reuse it when the outcome is unknown.
 
-Запуск всех тестов:
+A success response without a transaction id, or with a payment link that is not an absolute `http`/`https` URL, is treated as an error.
+
+## Try it locally
+
+The repository includes a Platega emulator and two Blazor Server demo apps: a shop (payer side) and an admin panel (merchant side). The demo UI is in Russian. No Platega account is needed.
+
+Prerequisites: .NET SDK 10.
+
+1. Start the emulator. Its control panel opens at `http://localhost:5190`:
+
+   ```bash
+   dotnet run --project samples/Platega.FakeServer --launch-profile http
+   ```
+
+2. In a second terminal, start the admin panel. It receives callbacks from the emulator:
+
+   ```bash
+   dotnet run --project samples/Platega.Demo.Admin --launch-profile http
+   ```
+
+3. In a third terminal, start the shop:
+
+   ```bash
+   dotnet run --project samples/Platega.Demo.Shop --launch-profile http
+   ```
+
+4. Open `http://localhost:5101`, pick a product and select **Оплатить** (Pay). The payment page opens in a new tab and the shop shows the order status. On the emulator page select **Оплатить** or **Отклонить** (Decline); the order status updates automatically.
+5. Open the admin panel at `http://localhost:5201`. The `Development` password is `admin`.
+
+Both apps share the SQLite database `%LOCALAPPDATA%\PlategaDemo\demo.db`; delete the folder to start over. The emulator control panel triggers events that the real service performs by itself, such as link expiry and subscription charges.
+
+To run the demo against the real API, set `Platega:MerchantId`, `Platega:Secret` and `Platega:BaseAddress` (`https://app.platega.io/`) with `dotnet user-secrets` for both apps, and `Admin:Password` for the admin panel. Callbacks cannot reach a local machine, because Platega only accepts a public HTTPS callback URL; the admin panel polls pending payments every 30 seconds instead.
+
+## Deploying the demo
+
+`deploy/` contains a Dockerfile, a `docker-compose.yml` and a Caddyfile. Caddy obtains Let's Encrypt certificates for two host names and proxies to the shop and the admin panel:
+
+1. Point two DNS names, for example `shop.<domain>` and `admin.<domain>`, to a Linux server with Docker Compose and open ports 80 and 443.
+2. Copy `deploy/.env.example` to `deploy/.env` and fill in the values. The file holds secrets and is ignored by git.
+3. Run `docker compose up -d --build` in `deploy/`. On a server with 1 GB of RAM, build the images elsewhere and transfer them as described at the top of `docker-compose.yml`.
+4. Check the endpoint: a callback without headers returns `401`.
+
+   ```bash
+   curl -i -X POST https://<ADMIN_DOMAIN>/platega/callback -H "Content-Type: application/json" -d "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"status\":\"CONFIRMED\"}"
+   ```
+
+5. Save `https://<ADMIN_DOMAIN>/platega/callback` as the callback URL in the merchant cabinet. Platega captures the URL when a transaction is created, so only transactions created afterwards send callbacks there.
+
+After editing `.env`, run `docker compose up -d` again: containers read it only when they are created.
+
+## Tests
 
 ```bash
 dotnet test tests/Platega.Client.Tests
 ```
 
-Что проверяют тесты:
+- **Unit tests** check request formats and response parsing against the Platega documentation and real responses.
+- **Payout signing** is checked against signatures produced by the Python sample from the Platega documentation.
+- **Integration tests** run the client against `Platega.FakeServer` (on .NET 10).
+- **Live tests** (`Category=Live`) call the real API and are skipped without credentials.
 
-- **Юнит-тесты** — формат запросов и разбор ответов на примерах из документации Platega.
-- **Подпись Payout** — сверяется с эталоном, посчитанным Python-примером из документации.
-- **Интеграционные тесты** — прогоняют клиент против `Platega.FakeServer`.
-- **Живые тесты** (`Category=Live`) — обращаются к настоящему API и без учётных данных пропускаются.
+To run the live tests, set the variables in your shell without saving the key to files, then run `dotnet test tests/Platega.Client.Tests -- --filter-trait "Category=Live" --output Detailed`:
 
-### Живые тесты
-
-Живые тесты проверяют клиент на реальном API и выводят сырые ответы. По этим ответам сверяются допущения из [docs/design.md](docs/design.md#непроверенные-допущения). Задайте переменные окружения в своём терминале, не сохраняя секрет в файлах:
-
-| Переменная | Обязательная | Назначение |
+| Variable | Required | Purpose |
 |---|---|---|
-| `PLATEGA_MERCHANT_ID` | да | ID мерчанта |
-| `PLATEGA_SECRET` | да | API-ключ |
-| `PLATEGA_BASE_ADDRESS` | нет | Адрес API, по умолчанию `https://app.platega.io/` |
-| `PLATEGA_PAYOUT_SECRET` | нет | Включает проверку подписи Payout API на списке сохранённых карт |
-| `PLATEGA_LIVE_CREATE` | нет | Значение `1` разрешает создать платёжную ссылку на 100 RUB. Деньги не списываются, пока по ссылке никто не заплатил |
+| `PLATEGA_MERCHANT_ID` | Yes | Merchant id |
+| `PLATEGA_SECRET` | Yes | API key |
+| `PLATEGA_BASE_ADDRESS` | No | API address, `https://app.platega.io/` by default |
+| `PLATEGA_PAYOUT_SECRET` | No | Enables the Payout API signature check |
+| `PLATEGA_LIVE_CREATE` | No | `1` allows creating a 100 RUB payment link and a subscription; no money moves unless someone pays |
 
-Без `PLATEGA_LIVE_CREATE` тесты только читают данные. Запуск с выводом ответов:
+Raw responses are also written to `live-responses.log` next to the test binaries.
 
-```bash
-dotnet test tests/Platega.Client.Tests -- --filter-trait "Category=Live" --output Detailed
-```
+## Contributing and releases
+
+- `dev` is the default branch: open pull requests against it.
+- `main` holds released code. Every merge into `main` runs the release workflow, which builds, tests and publishes the version from `<VersionPrefix>` in `src/Directory.Build.props` to nuget.org and GitHub Packages, then creates the `v<version>` GitHub release.
+- To release, bump `<VersionPrefix>`, add a `## [<version>]` section to `CHANGELOG.md`, and merge `dev` into `main`. A merge without a version bump publishes nothing new.
+
+## Documentation
+
+- [Design and Platega API behavior](docs/design.md): what the client handles, what was verified against the live API, and open questions.
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
+
+## License
+
+[MIT](LICENSE)

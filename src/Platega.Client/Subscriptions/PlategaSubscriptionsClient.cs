@@ -11,8 +11,10 @@ public interface IPlategaSubscriptionsClient
     /// <summary>Creates a subscription and returns the binding page the payer must be sent to.</summary>
     Task<CreatedSubscription> CreateAsync(CreateSubscriptionRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>Returns a subscription with its charge statistics.</summary>
     Task<PlategaSubscription> GetAsync(Guid subscriptionId, CancellationToken cancellationToken = default);
 
+    /// <summary>Returns one page of subscriptions.</summary>
     Task<SubscriptionPage> ListAsync(SubscriptionListFilter? filter = null, CancellationToken cancellationToken = default);
 
     /// <summary>Stops future charges. Idempotent.</summary>

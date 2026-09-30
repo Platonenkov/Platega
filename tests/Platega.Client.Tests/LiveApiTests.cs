@@ -184,7 +184,7 @@ public sealed class LiveApiTests : IDisposable
     private sealed class ResponseLoggingHandler : DelegatingHandler
     {
         private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "live-responses.log");
-        private static readonly Lock LogSync = new Lock();
+        private static readonly object LogSync = new object();
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
