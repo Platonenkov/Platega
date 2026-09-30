@@ -6,6 +6,7 @@ namespace Platega;
 /// </summary>
 public enum PaymentMethod
 {
+    /// <summary>Method not recognized or not chosen yet.</summary>
     Unknown = 0,
 
     /// <summary>SBP (Russian Faster Payments System), QR code.</summary>

@@ -9,11 +9,13 @@ public sealed record CancelAvailability
     /// <summary>Total amount in USDT that will be deducted from the balance.</summary>
     public decimal? TotalDeductUsdt { get; init; }
 
+    /// <summary>Penalty in <see cref="PenaltyNativeCurrency"/>, if any.</summary>
     public decimal? PenaltyNativeAmount { get; init; }
 
     /// <summary>Penalty currency (RUB, EUR, ...).</summary>
     public string? PenaltyNativeCurrency { get; init; }
 
+    /// <summary>Penalty in USDT, if any.</summary>
     public decimal? PenaltyUsdt { get; init; }
 
     /// <summary>Conversion rate applied to the penalty.</summary>
@@ -26,6 +28,7 @@ public sealed record CancelAvailability
 /// <summary>Result of <c>POST /transaction/{id}/cancel</c>.</summary>
 public sealed record CancelResult
 {
+    /// <summary>Cancelled transaction id.</summary>
     public Guid TransactionId { get; init; }
 
     /// <summary>True when the cancellation was accepted for automatic processing.</summary>
@@ -34,5 +37,6 @@ public sealed record CancelResult
     /// <summary>True when the cancellation needs manual handling by Platega support.</summary>
     public bool ManualControlRequired { get; init; }
 
+    /// <summary>Message from Platega about the cancellation.</summary>
     public string? Message { get; init; }
 }

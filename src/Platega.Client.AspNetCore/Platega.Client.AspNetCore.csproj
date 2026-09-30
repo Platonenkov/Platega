@@ -4,7 +4,6 @@
     <RootNamespace>Platega.AspNetCore</RootNamespace>
     <Description>ASP.NET Core endpoint for Platega payment callbacks: authenticates X-MerchantId/X-Secret, parses payment and subscription callbacks, answers reachability probes, and keeps the status codes Platega relies on for retries. Unofficial.</Description>
     <PackageTags>$(PackageTags);aspnetcore;minimal-api</PackageTags>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
