@@ -157,6 +157,12 @@ To run the live tests, set the variables in your shell without saving the key to
 
 Raw responses are also written to `live-responses.log` next to the test binaries.
 
+## Contributing and releases
+
+- `dev` is the default branch: open pull requests against it.
+- `main` holds released code. Every merge into `main` runs the release workflow, which builds, tests and publishes the version from `<VersionPrefix>` in `src/Directory.Build.props` to nuget.org and GitHub Packages, then creates the `v<version>` GitHub release.
+- To release, bump `<VersionPrefix>`, add a `## [<version>]` section to `CHANGELOG.md`, and merge `dev` into `main`. A merge without a version bump publishes nothing new.
+
 ## Documentation
 
 - [Design and Platega API behavior](docs/design.md): what the client handles, what was verified against the live API, and open questions.

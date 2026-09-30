@@ -1,70 +1,116 @@
-name: Release
+name: NuGet Release
 
-# Publishes to nuget.org when a version tag (v0.1.0) is pushed.
-# Authentication uses NuGet Trusted Publishing (GitHub OIDC): no long-lived API key is stored.
-# One-time setup: add a Trusted Publishing policy on nuget.org for this repository and workflow file,
-# and set the repository secret NUGET_USER to the nuget.org profile name.
+# Every merge into main releases the version set in src/Directory.Build.props (<VersionPrefix>).
+# Re-running is safe: pushes use --skip-duplicate and an existing GitHub release is left as is,
+# so a merge without a version bump publishes nothing new.
+# Authentication to nuget.org uses Trusted Publishing (GitHub OIDC): no long-lived API key is stored.
+# One-time setup: a Trusted Publishing policy on nuget.org for this repository and workflow file
+# release.yml, and the repository secret NUGET_USER set to the nuget.org profile name.
 
 on:
   push:
-    tags: ['v*']
+    branches: [ main ]
 
 permissions:
   contents: write
+  packages: write
   id-token: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
-    environment: nuget
+
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+    - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
+    # Deliberately before the build: a missing CHANGELOG section fails the run while nothing
+    # has been published yet, rather than after the push to nuget.org, which cannot be taken back
+    # and whose version number cannot be reused.
+    - name: Resolve version and release notes
+      id: notes
+      run: |
+        set -euo pipefail
 
-      - name: Check that the tag matches VersionPrefix
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          prefix="$(dotnet msbuild src/Platega.Client/Platega.Client.csproj -getProperty:VersionPrefix)"
-          if [ "${version%%-*}" != "$prefix" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match VersionPrefix $prefix in src/Directory.Build.props" >&2
-            exit 1
-          fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+        version=$(awk 'match($0, /<VersionPrefix>[^<]+<\/VersionPrefix>/) {
+                         s = substr($0, RSTART, RLENGTH)
+                         sub(/<VersionPrefix>/, "", s)
+                         sub(/<\/VersionPrefix>/, "", s)
+                         print s
+                         exit
+                       }' src/Directory.Build.props)
+        if [ -z "$version" ]; then
+          echo "::error file=src/Directory.Build.props::No <VersionPrefix> found."
+          exit 1
+        fi
 
-      - name: Build
-        run: dotnet build Platega.slnx -c Release -p:Version="$VERSION"
+        # From the "## [<version>]" heading to the next "## [" heading or the link references.
+        awk -v heading="## [$version]" '
+          index($0, heading) == 1 { found = 1; next }
+          found && (index($0, "## [") == 1 || $0 ~ /^\[[^]]+\]: /) { exit }
+          found { print }
+        ' CHANGELOG.md > release-notes.md
 
-      - name: Test
-        run: dotnet test tests/Platega.Client.Tests -c Release --no-build
+        if [ ! -s release-notes.md ]; then
+          echo "::error file=CHANGELOG.md::No section headed '## [$version]' - add the release entry or fix the version."
+          exit 1
+        fi
 
-      - name: Pack
-        run: |
-          dotnet pack src/Platega.Client/Platega.Client.csproj -c Release --no-build -p:Version="$VERSION" -o artifacts
-          dotnet pack src/Platega.Client.AspNetCore/Platega.Client.AspNetCore.csproj -c Release --no-build -p:Version="$VERSION" -o artifacts
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "tag=v$version" >> "$GITHUB_OUTPUT"
+        echo "Release v$version, $(wc -c < release-notes.md) characters of notes."
 
-      - name: NuGet login (OIDC)
-        id: nuget
-        uses: NuGet/login@v1
-        with:
-          user: ${{ secrets.NUGET_USER }}
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          8.0.x
+          10.0.x
 
-      - name: Push to nuget.org
-        run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ steps.nuget.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+    - name: Restore dependencies
+      run: dotnet restore Platega.slnx
 
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          awk -v heading="## [$VERSION]" '
-            index($0, heading) == 1 { found = 1; next }
-            found && (index($0, "## [") == 1 || $0 ~ /^\[[^]]+\]: /) { exit }
-            found { print }
-          ' CHANGELOG.md > release-notes.md
-          gh release create "$GITHUB_REF_NAME" artifacts/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md
+    - name: Build
+      run: dotnet build Platega.slnx --no-restore -c Release
+
+    - name: Test
+      run: dotnet test tests/Platega.Client.Tests --no-build -c Release
+
+    - name: Pack
+      run: |
+        dotnet pack src/Platega.Client/Platega.Client.csproj -c Release --no-build -o artifacts
+        dotnet pack src/Platega.Client.AspNetCore/Platega.Client.AspNetCore.csproj -c Release --no-build -o artifacts
+
+    - name: Push to GitHub Packages
+      run: dotnet nuget push "artifacts/*.nupkg" --skip-duplicate --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" -k ${{ secrets.GITHUB_TOKEN }}
+
+    # Trusted Publishing: exchange the GitHub OIDC token for a short-lived nuget.org API key.
+    # The key is valid for 1 hour, so this must stay immediately before the push step.
+    - name: NuGet login (OIDC)
+      uses: NuGet/login@v1
+      id: nuget-login
+      with:
+        user: ${{ secrets.NUGET_USER }}
+
+    - name: Publish to NuGet.org
+      run: dotnet nuget push "artifacts/*.nupkg" --skip-duplicate -s https://api.nuget.org/v3/index.json -k ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+
+    # Last, so a release only ever appears for packages that actually shipped.
+    # Skips an existing release rather than failing, so a re-run can finish.
+    - name: Publish GitHub release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ steps.notes.outputs.tag }}
+      run: |
+        set -euo pipefail
+
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo "Release $TAG already exists - nothing to do."
+          exit 0
+        fi
+
+        gh release create "$TAG" artifacts/* \
+          --target "$GITHUB_SHA" \
+          --title "$TAG" \
+          --notes-file release-notes.md
+
+        echo "Created release $TAG."
